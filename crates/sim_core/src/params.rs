@@ -27,29 +27,28 @@ pub struct FlockParams {
 impl Default for FlockParams {
     fn default() -> Self {
         Self {
-            bird_count: 10_000,
+            bird_count: 2600,
             neighbor_radius: 8.0,
             separation_radius: 3.0,
             separation_weight: 1.2,
             alignment_weight: 0.8,
             cohesion_weight: 0.6,
-            boundary_weight: 0.5,
-            boundary_radius: 150.0,
-            noise_weight: 0.8,
-            noise_scale: 0.015,
-            noise_speed: 0.2,
+            boundary_weight: 0.75,
+            boundary_radius: 28.0,
+            noise_weight: 0.42,
+            noise_scale: 0.08,
+            noise_speed: 0.22,
             predator_weight: 1.0,
             predator_radius: 12.0,
             fear_decay: 0.3,
             fear_spread: 0.4,
             fear_turn_boost: 0.5,
-            min_speed: 2.0,
-            max_speed: 12.0,
-            max_turn_rate: 1.0,
+            min_speed: 1.8,
+            max_speed: 4.2,
+            max_turn_rate: 2.9,
             trail_decay: 0.92,
             exposure: 1.0,
-            fog_density: 0.02,
+            fog_density: 0.06,
         }
     }
 }
-

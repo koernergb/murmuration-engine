@@ -3,7 +3,7 @@ mod input;
 mod ui;
 
 use app::NativeApp;
-use input::should_exit;
+use input::{action_for_event, should_exit};
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::WindowBuilder;
@@ -11,10 +11,11 @@ use winit::window::WindowBuilder;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let event_loop = EventLoop::new()?;
     let window = WindowBuilder::new()
-        .with_title(ui::window_title())
+        .with_title(ui::base_window_title())
         .with_inner_size(winit::dpi::LogicalSize::new(1440.0, 900.0))
         .build(&event_loop)?;
     let mut app = pollster::block_on(NativeApp::new(&window))?;
+    window.set_title(&app.window_title());
 
     println!("{}", app.summary());
 
@@ -28,10 +29,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     return;
                 }
 
+                if let Some(action) = action_for_event(&event) {
+                    app.handle_action(action);
+                    window.set_title(&app.window_title());
+                    return;
+                }
+
                 match event {
-                    WindowEvent::Resized(size) => app.resize(size),
+                    WindowEvent::Resized(size) => {
+                        app.resize(size);
+                        window.set_title(&app.window_title());
+                    }
                     WindowEvent::RedrawRequested => {
                         app.update();
+                        window.set_title(&app.window_title());
                         match app.render() {
                             Ok(()) => {}
                             Err(wgpu::SurfaceError::Lost) => app.resize(app.renderer_size()),

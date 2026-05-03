@@ -1,7 +1,6 @@
 {
   "name": "Calm Cloud",
-  "bird_count": 25000,
-  "noise_weight": 0.35,
-  "boundary_radius": 180.0
+  "bird_count": 2200,
+  "noise_weight": 0.28,
+  "boundary_radius": 30.0
 }
-

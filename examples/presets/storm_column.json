@@ -1,7 +1,6 @@
 {
   "name": "Storm Column",
-  "bird_count": 40000,
-  "noise_weight": 1.1,
-  "boundary_radius": 120.0
+  "bird_count": 4200,
+  "noise_weight": 0.65,
+  "boundary_radius": 20.0
 }
-

@@ -15,12 +15,17 @@ struct BirdVertex {
     position: [f32; 2],
 }
 
+struct DepthResources {
+    view: wgpu::TextureView,
+}
+
 pub struct Renderer<'window> {
     surface: wgpu::Surface<'window>,
     device: wgpu::Device,
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
     size: PhysicalSize<u32>,
+    depth: DepthResources,
     sky_pipeline: wgpu::RenderPipeline,
     render_pipeline: wgpu::RenderPipeline,
     bird_vertex_buffer: wgpu::Buffer,
@@ -83,6 +88,7 @@ impl<'window> Renderer<'window> {
             desired_maximum_frame_latency: 2,
         };
         surface.configure(&device, &config);
+        let depth = create_depth_resources(&device, &config);
 
         let camera = Camera::default();
         let bootstrap_params = FlockParams::default();
@@ -169,7 +175,13 @@ impl<'window> Renderer<'window> {
                 polygon_mode: wgpu::PolygonMode::Fill,
                 conservative: false,
             },
-            depth_stencil: None,
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: wgpu::TextureFormat::Depth32Float,
+                depth_write_enabled: false,
+                depth_compare: wgpu::CompareFunction::Always,
+                stencil: wgpu::StencilState::default(),
+                bias: wgpu::DepthBiasState::default(),
+            }),
             multisample: wgpu::MultisampleState::default(),
             multiview: None,
         });
@@ -231,18 +243,35 @@ impl<'window> Renderer<'window> {
                 polygon_mode: wgpu::PolygonMode::Fill,
                 conservative: false,
             },
-            depth_stencil: None,
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: wgpu::TextureFormat::Depth32Float,
+                depth_write_enabled: false,
+                depth_compare: wgpu::CompareFunction::Always,
+                stencil: wgpu::StencilState::default(),
+                bias: wgpu::DepthBiasState::default(),
+            }),
             multisample: wgpu::MultisampleState::default(),
             multiview: None,
         });
 
         let bird_vertices = [
             BirdVertex {
-                position: [-0.5, -0.35],
+                position: [-1.0, -1.0],
             },
-            BirdVertex { position: [0.0, 0.65] },
             BirdVertex {
-                position: [0.5, -0.35],
+                position: [1.0, -1.0],
+            },
+            BirdVertex {
+                position: [1.0, 1.0],
+            },
+            BirdVertex {
+                position: [-1.0, -1.0],
+            },
+            BirdVertex {
+                position: [1.0, 1.0],
+            },
+            BirdVertex {
+                position: [-1.0, 1.0],
             },
         ];
         let bird_vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -271,6 +300,7 @@ impl<'window> Renderer<'window> {
             queue,
             config,
             size,
+            depth,
             sky_pipeline,
             render_pipeline,
             bird_vertex_buffer,
@@ -301,6 +331,7 @@ impl<'window> Renderer<'window> {
         self.config.width = new_size.width;
         self.config.height = new_size.height;
         self.surface.configure(&self.device, &self.config);
+        self.depth = create_depth_resources(&self.device, &self.config);
     }
 
     pub fn draw(
@@ -350,7 +381,14 @@ impl<'window> Renderer<'window> {
                         store: wgpu::StoreOp::Store,
                     },
                 })],
-                depth_stencil_attachment: None,
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &self.depth.view,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(1.0),
+                        store: wgpu::StoreOp::Store,
+                    }),
+                    stencil_ops: None,
+                }),
                 occlusion_query_set: None,
                 timestamp_writes: None,
             });
@@ -390,5 +428,29 @@ impl<'window> Renderer<'window> {
                 usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             });
         self.bird_buffers = BirdBuffers::new(buffer, new_capacity);
+    }
+}
+
+fn create_depth_resources(
+    device: &wgpu::Device,
+    config: &wgpu::SurfaceConfiguration,
+) -> DepthResources {
+    let texture = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("depth-texture"),
+        size: wgpu::Extent3d {
+            width: config.width.max(1),
+            height: config.height.max(1),
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Depth32Float,
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+        view_formats: &[],
+    });
+
+    DepthResources {
+        view: texture.create_view(&wgpu::TextureViewDescriptor::default()),
     }
 }

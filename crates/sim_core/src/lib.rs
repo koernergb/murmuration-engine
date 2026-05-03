@@ -31,8 +31,16 @@ impl SimulationState {
         &self.params
     }
 
+    pub fn params_mut(&mut self) -> &mut FlockParams {
+        &mut self.params
+    }
+
     pub fn time_seconds(&self) -> f32 {
         self.time_seconds
+    }
+
+    pub fn replace_birds(&mut self, birds: Vec<Bird>) {
+        self.birds = birds;
     }
 
     pub fn step(&mut self, dt: f32) {
@@ -40,42 +48,57 @@ impl SimulationState {
         self.time_seconds += dt;
         let boundary_radius = self.params.boundary_radius.max(25.0);
         let noise_scale = self.params.noise_scale.max(0.001);
+        let anchors = cloud_anchors(self.time_seconds, boundary_radius);
+        let cloud_center = centroid(&anchors);
 
         for (index, bird) in self.birds.iter_mut().enumerate() {
-            let phase = self.time_seconds * (0.45 + bird.seed * 0.35) + bird.phase;
-            let center = [
-                (self.time_seconds * 0.13).sin() * boundary_radius * 0.08,
-                (self.time_seconds * 0.09).cos() * 6.5,
-                (self.time_seconds * 0.11).cos() * boundary_radius * 0.06,
-            ];
-            let relative = sub3(bird.position, center);
-            let swirl = normalize_or_zero([-relative[2], 0.18 * relative[1], relative[0]]);
+            let phase = self.time_seconds * (0.32 + bird.seed * 0.24) + bird.phase;
+            let anchor_mix = bird.seed * (anchors.len() as f32 - 0.01);
+            let base_anchor_index = anchor_mix.floor() as usize;
+            let next_anchor_index = (base_anchor_index + 1) % anchors.len();
+            let anchor_blend = anchor_mix.fract() * 0.65 + 0.15;
+            let primary_anchor = lerp3(
+                anchors[base_anchor_index],
+                anchors[next_anchor_index],
+                anchor_blend,
+            );
+            let relative = sub3(bird.position, primary_anchor);
+            let to_center = sub3(cloud_center, bird.position);
+            let swirl = normalize_or_zero([
+                -relative[2] * 0.7 + to_center[0] * 0.2,
+                relative[1] * 0.15,
+                relative[0] * 0.7 + to_center[2] * 0.2,
+            ]);
             let center_pull = normalize_or_zero(scale3(relative, -1.0));
             let boundary_force = soft_boundary_force(relative, boundary_radius);
-            let wave_lift = [
-                (phase * 0.7 + relative[2] * 0.018).sin() * 0.2,
-                (phase * 1.15 + relative[0] * 0.015).cos() * 0.95,
-                (phase * 0.65 - relative[1] * 0.02).sin() * 0.22,
+            let lobe_pull = normalize_or_zero(to_center);
+            let vertical_wave = [
+                (phase * 0.48 + relative[2] * 0.028).sin() * 0.08,
+                (phase * 0.86 + relative[0] * 0.021).cos() * 0.42,
+                (phase * 0.44 - relative[1] * 0.024).sin() * 0.08,
             ];
             let curlish_noise = fake_curl_noise(relative, phase, noise_scale);
-            let ribbon_shear = [
-                (relative[1] * 0.055 + phase * 0.8).sin() * 0.7,
-                (relative[0] * 0.025 + phase).cos() * 0.1,
-                (relative[0] * 0.055 - phase * 0.75).cos() * 0.7,
+            let compression = [
+                (relative[1] * 0.12 + phase * 0.55).sin() * 0.2,
+                (relative[0] * 0.08 + phase * 0.4).cos() * 0.08,
+                (relative[0] * 0.12 - phase * 0.58).cos() * 0.2,
             ];
-            let lane_bias = (((index % 31) as f32 / 31.0) - 0.5) * 0.25;
+            let lane_bias = (((index % 31) as f32 / 31.0) - 0.5) * 0.08;
 
             let steering = add3(
-                scale3(swirl, 1.8 + lane_bias),
+                scale3(swirl, 1.05 + lane_bias),
                 add3(
-                    scale3(center_pull, 0.62),
+                    scale3(center_pull, 0.9),
                     add3(
-                        scale3(boundary_force, self.params.boundary_weight * 1.6),
+                        scale3(boundary_force, self.params.boundary_weight * 1.8),
                         add3(
-                            scale3(wave_lift, 0.95),
+                            scale3(lobe_pull, 0.42),
                             add3(
-                                scale3(curlish_noise, self.params.noise_weight * 1.3),
-                                scale3(ribbon_shear, 0.42),
+                                scale3(vertical_wave, 0.55),
+                                add3(
+                                    scale3(curlish_noise, self.params.noise_weight * 0.75),
+                                    scale3(compression, 0.25),
+                                ),
                             ),
                         ),
                     ),
@@ -91,13 +114,14 @@ impl SimulationState {
                 self.params.max_turn_rate,
             );
 
-            let horizontal_distance =
-                (relative[0] * relative[0] + relative[2] * relative[2]).sqrt() / boundary_radius;
-            let vertical_band = (relative[1].abs() / (boundary_radius * 0.32)).clamp(0.0, 1.0);
-            let fold = ((phase * 0.55 + horizontal_distance * 8.0).sin() * 0.5) + 0.5;
-            bird.density = (1.0 - horizontal_distance * 0.78) * (1.0 - vertical_band * 0.55);
-            bird.density = bird.density.clamp(0.08, 1.0) * (0.75 + fold * 0.25);
-            bird.fear = ((phase * 0.25 + horizontal_distance * 6.0).sin().abs() * 0.05).min(0.12);
+            let lobe_distance = length3(relative) / (boundary_radius * 0.72);
+            let cloud_distance = length3(sub3(bird.position, cloud_center)) / boundary_radius;
+            let dark_core = (1.0 - lobe_distance).clamp(0.0, 1.0);
+            let outer_falloff = (1.0 - cloud_distance * 0.85).clamp(0.0, 1.0);
+            let pulse = ((phase * 0.42 + bird.seed * 8.0).sin() * 0.5) + 0.5;
+            bird.density = (dark_core * 0.72 + outer_falloff * 0.28).clamp(0.05, 1.0);
+            bird.density *= 0.82 + pulse * 0.18;
+            bird.fear = 0.0;
         }
     }
 }
@@ -108,6 +132,10 @@ fn add3(a: [f32; 3], b: [f32; 3]) -> [f32; 3] {
 
 fn sub3(a: [f32; 3], b: [f32; 3]) -> [f32; 3] {
     [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
+}
+
+fn lerp3(a: [f32; 3], b: [f32; 3], t: f32) -> [f32; 3] {
+    add3(scale3(a, 1.0 - t), scale3(b, t))
 }
 
 fn scale3(v: [f32; 3], s: f32) -> [f32; 3] {
@@ -153,4 +181,33 @@ fn fake_curl_noise(position: [f32; 3], phase: f32, scale: f32) -> [f32; 3] {
         (pz + phase * 0.6).sin() - (px + phase * 0.5).cos(),
         (px - phase * 0.7).sin() - (py + phase * 0.35).cos(),
     ]
+}
+
+fn cloud_anchors(time_seconds: f32, boundary_radius: f32) -> [[f32; 3]; 3] {
+    let spread = boundary_radius * 0.32;
+    [
+        [
+            (time_seconds * 0.28).sin() * spread,
+            (time_seconds * 0.36).cos() * spread * 0.22,
+            (time_seconds * 0.22).cos() * spread * 0.8,
+        ],
+        [
+            (time_seconds * 0.24 + 1.8).sin() * spread * 0.92,
+            (time_seconds * 0.31 + 0.6).sin() * spread * 0.16,
+            (time_seconds * 0.29 + 1.2).cos() * spread * 0.72,
+        ],
+        [
+            (time_seconds * 0.33 + 3.2).sin() * spread * 0.84,
+            (time_seconds * 0.27 + 0.9).cos() * spread * 0.18,
+            (time_seconds * 0.25 + 2.4).cos() * spread * 0.76,
+        ],
+    ]
+}
+
+fn centroid(points: &[[f32; 3]]) -> [f32; 3] {
+    let mut sum = [0.0; 3];
+    for point in points {
+        sum = add3(sum, *point);
+    }
+    scale3(sum, 1.0 / points.len() as f32)
 }

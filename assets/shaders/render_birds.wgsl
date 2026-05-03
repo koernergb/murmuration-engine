@@ -21,46 +21,70 @@ struct VertexInput {
 struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>,
     @location(0) world_position: vec3<f32>,
-    @location(1) color: vec4<f32>,
+    @location(1) center_world_position: vec3<f32>,
+    @location(2) local_uv: vec2<f32>,
+    @location(3) density: f32,
 }
 
 @vertex
 fn vs_main(input: VertexInput) -> VertexOutput {
-    let forward = normalize(select(vec3<f32>(0.0, 0.0, 1.0), input.bird_velocity.xyz, length(input.bird_velocity.xyz) > 0.0001));
-    let provisional_right = cross(vec3<f32>(0.0, 1.0, 0.0), forward);
+    let to_eye = normalize(camera.eye.xyz - input.bird_position.xyz);
+    let provisional_right = cross(vec3<f32>(0.0, 1.0, 0.0), to_eye);
     let right = normalize(select(vec3<f32>(1.0, 0.0, 0.0), provisional_right, length(provisional_right) > 0.0001));
-    let wing_up = normalize(cross(forward, right));
-
-    let scale = 0.85 + input.bird_aux.z * 0.45;
+    let up = normalize(cross(to_eye, right));
+    let scale = 0.14 + input.bird_aux.z * 0.09;
     let world_position =
         input.bird_position.xyz
         + right * input.local_position.x * scale
-        + wing_up * input.local_position.y * scale;
-
-    let to_camera = normalize(camera.eye.xyz - world_position);
-    let sun_direction = normalize(camera.sun_direction.xyz);
-    let turn_highlight = 0.2 + 0.8 * abs(dot(forward, to_camera));
-    let sun_grazing = 0.3 + 0.7 * max(0.0, dot(-forward, sun_direction));
-    let density_shadow = 1.0 - input.bird_aux.z * 0.25;
-    let fear_tint = input.bird_aux.x * 0.22;
-    let base = vec3<f32>(0.14, 0.17, 0.22) * density_shadow;
-    let highlight = vec3<f32>(0.72, 0.74, 0.79) * turn_highlight * sun_grazing;
-    let color = mix(base, highlight, 0.42 + fear_tint);
+        + up * input.local_position.y * scale;
 
     var out: VertexOutput;
     out.clip_position = camera.view_proj * vec4<f32>(world_position, 1.0);
     out.world_position = world_position;
-    out.color = vec4<f32>(color, 0.92);
+    out.center_world_position = input.bird_position.xyz;
+    out.local_uv = input.local_position;
+    out.density = input.bird_aux.z;
     return out;
 }
 
 @fragment
 fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
+    let radius2 = dot(input.local_uv, input.local_uv);
+    if (radius2 > 1.0) {
+        discard;
+    }
+
     let fog_density = camera.atmosphere.x;
     let exposure = camera.atmosphere.y;
-    let distance_to_eye = distance(camera.eye.xyz, input.world_position);
-    let fog_factor = 1.0 - exp(-distance_to_eye * fog_density * 0.032);
-    let fog_color = mix(camera.horizon_color.xyz, camera.zenith_color.xyz, 0.58);
-    let color = mix(input.color.xyz, fog_color, clamp(fog_factor, 0.0, 0.92)) * exposure;
-    return vec4<f32>(color, input.color.a);
+    let sphere_z = sqrt(max(0.0, 1.0 - radius2));
+    let local_normal = vec3<f32>(input.local_uv, sphere_z);
+    let sun_direction = normalize(camera.sun_direction.xyz);
+    let view_direction = normalize(camera.eye.xyz - input.center_world_position);
+    let provisional_right = cross(vec3<f32>(0.0, 1.0, 0.0), view_direction);
+    let right = normalize(select(vec3<f32>(1.0, 0.0, 0.0), provisional_right, length(provisional_right) > 0.0001));
+    let up = normalize(cross(view_direction, right));
+    let forward = -view_direction;
+    let basis = mat3x3<f32>(right, up, forward);
+    let normal = normalize(basis * local_normal);
+    let reflected = reflect(-view_direction, normal);
+    let sky_mix = clamp(reflected.y * 0.5 + 0.5, 0.0, 1.0);
+    let env = mix(camera.horizon_color.xyz, camera.zenith_color.xyz, sky_mix);
+    let highlight = pow(max(0.0, dot(reflected, sun_direction)), 18.0);
+    let fresnel = pow(1.0 - max(0.0, dot(normal, view_direction)), 3.4);
+    let diffuse = max(0.0, dot(normal, sun_direction));
+    let core_shadow = smoothstep(0.0, 1.0, input.density);
+    let chrome = env * (0.10 + fresnel * 0.26) + vec3<f32>(1.0) * highlight * 0.22;
+    let base = mix(vec3<f32>(0.0005, 0.0007, 0.001), vec3<f32>(0.014, 0.016, 0.018), core_shadow);
+    let silhouette = smoothstep(1.0, 0.22, radius2);
+    let rim = pow(1.0 - max(0.0, dot(normal, view_direction)), 1.6);
+    let lit = mix(base, chrome, 0.22) + vec3<f32>(0.010) * diffuse + vec3<f32>(0.035) * rim * 0.08;
+    let distance_to_eye = distance(camera.eye.xyz, input.center_world_position);
+    let fog_factor = 1.0 - exp(-distance_to_eye * fog_density * 0.045);
+    let fog_color = mix(camera.horizon_color.xyz, camera.zenith_color.xyz, 0.62);
+    let edge = smoothstep(1.0, 0.0, radius2);
+    let core = smoothstep(1.0, 0.12, radius2);
+    let alpha = edge * (0.16 + input.density * 0.26) * (0.58 + core * 0.42);
+    let color = mix(lit, fog_color, clamp(fog_factor, 0.0, 0.72)) * exposure;
+    let final_color = mix(color * 0.78, color, silhouette);
+    return vec4<f32>(final_color, alpha);
 }

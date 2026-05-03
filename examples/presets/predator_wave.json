@@ -1,7 +1,7 @@
 {
   "name": "Predator Ripple",
-  "bird_count": 30000,
+  "bird_count": 2800,
   "predator_weight": 1.5,
-  "fear_spread": 0.8
+  "fear_spread": 0.8,
+  "boundary_radius": 26.0
 }
-
