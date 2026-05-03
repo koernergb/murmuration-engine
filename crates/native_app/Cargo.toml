@@ -5,6 +5,8 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+pollster.workspace = true
 renderer_wgpu = { path = "../renderer_wgpu" }
 sim_core = { path = "../sim_core" }
-
+wgpu.workspace = true
+winit.workspace = true
