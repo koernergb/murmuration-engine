@@ -1,0 +1,17 @@
+[workspace]
+members = [
+    "crates/sim_core",
+    "crates/renderer_wgpu",
+    "crates/native_app",
+    "crates/web_app",
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+license = "MIT"
+version = "0.1.0"
+authors = ["koerner"]
+
+[workspace.dependencies]
+

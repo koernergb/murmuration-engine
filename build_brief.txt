@@ -1,0 +1,1196 @@
+# Build Brief: **High-Resolution WebGPU Murmuration Engine**
+
+## Project title
+
+**Murmuration Engine**
+
+A real-time, high-density flocking simulation that runs natively and in the browser, rendering tens of thousands to hundreds of thousands of bird-like agents with emergent wave behavior, cinematic lighting, and interactive controls.
+
+The pitch:
+
+> I built a Rust/WebGPU simulation engine for high-resolution murmurations, using GPU instancing, spatial acceleration, flocking dynamics, coherent noise fields, and perturbation-wave propagation to create large-scale emergent motion in real time.
+
+---
+
+# 1. What you are building
+
+A simulation where thousands of small agents move like a starling murmuration.
+
+The user sees:
+
+```txt
+A huge flock moving through the sky
+Ribbons, sheets, pulses, and density waves
+Birds turning together in dark/silver ripples
+A predator-like disturbance that triggers cascades
+Camera controls and cinematic lighting
+Sliders for simulation behavior
+Browser demo + native high-performance build
+```
+
+The technical artifact is not just “boids.” It is a **GPU-accelerated multi-agent visual simulation**.
+
+---
+
+# 2. Target versions
+
+## Version A: Web demo
+
+Runs in the browser.
+
+Target:
+
+```txt
+25k–100k birds
+WebGPU renderer
+Interactive sliders
+Orbit/free camera
+Quality presets
+Predator toggle
+Shareable URL
+```
+
+This is the public-facing artifact.
+
+## Version B: Native high-res engine
+
+Runs as a desktop app.
+
+Target:
+
+```txt
+100k–1M birds
+Higher resolution
+Better postprocessing
+Video/screenshot export
+More aggressive GPU compute
+```
+
+This is the “serious engine” version for portfolio screenshots, demos, and writeup.
+
+---
+
+# 3. Recommended stack
+
+Use:
+
+```txt
+Rust
+wgpu
+winit
+egui
+glam
+bytemuck
+rand
+noise or custom curl noise
+```
+
+Optional later:
+
+```txt
+trunk or wasm-pack for web
+wasm-bindgen
+web-sys
+```
+
+Suggested architecture:
+
+```txt
+Rust core
+↓
+wgpu renderer
+↓
+native target using winit
+↓
+web target using wasm + WebGPU
+```
+
+---
+
+# 4. Repo structure
+
+```txt
+murmuration-engine/
+  Cargo.toml
+  README.md
+
+  crates/
+    sim_core/
+      Cargo.toml
+      src/
+        lib.rs
+        bird.rs
+        params.rs
+        forces.rs
+        spatial_grid.rs
+        integrator.rs
+
+    renderer_wgpu/
+      Cargo.toml
+      src/
+        lib.rs
+        renderer.rs
+        camera.rs
+        bird_renderer.rs
+        trail_renderer.rs
+        sky.rs
+        gpu_buffers.rs
+
+    native_app/
+      Cargo.toml
+      src/
+        main.rs
+        app.rs
+        input.rs
+        ui.rs
+
+    web_app/
+      Cargo.toml
+      index.html
+      src/
+        lib.rs
+
+  assets/
+    shaders/
+      render_birds.wgsl
+      update_birds.wgsl
+      sky.wgsl
+      trails.wgsl
+
+  examples/
+    presets/
+      calm.json
+      predator_wave.json
+      storm_column.json
+      ribbon_flock.json
+
+  docs/
+    architecture.md
+    simulation.md
+    performance.md
+```
+
+This structure makes the project look serious immediately.
+
+---
+
+# 5. Core simulation model
+
+Each bird is an agent with minimal state.
+
+```rust
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct Bird {
+    pub position: [f32; 4],
+    pub velocity: [f32; 4],
+    pub aux: [f32; 4],
+}
+```
+
+Use `aux` for:
+
+```txt
+aux.x = fear
+aux.y = phase
+aux.z = local_density
+aux.w = random_seed or species_bias
+```
+
+Why `[f32; 4]`?
+
+Because GPU buffers like 16-byte alignment. It keeps WGSL interop clean.
+
+---
+
+# 6. Flocking forces
+
+Each frame, compute:
+
+```txt
+separation
+alignment
+cohesion
+boundary force
+curl noise / wind
+predator avoidance
+fear-wave propagation
+turn-rate limiting
+speed clamping
+```
+
+The force equation:
+
+```txt
+force =
+    separation_weight * separation
+  + alignment_weight  * alignment
+  + cohesion_weight   * cohesion
+  + boundary_weight   * boundary
+  + noise_weight      * curl_noise
+  + predator_weight   * predator_avoidance
+  + fear_weight       * fear_response
+```
+
+Then integrate:
+
+```txt
+velocity += force * dt
+velocity = clamp_speed(velocity)
+velocity = limit_turn_rate(previous_velocity, velocity)
+position += velocity * dt
+```
+
+The **turn-rate limiter** is crucial. Without it, birds feel like particles. With it, they feel like living bodies.
+
+---
+
+# 7. Parameters
+
+Expose these in the UI:
+
+```rust
+pub struct FlockParams {
+    pub bird_count: u32,
+
+    pub neighbor_radius: f32,
+    pub separation_radius: f32,
+
+    pub separation_weight: f32,
+    pub alignment_weight: f32,
+    pub cohesion_weight: f32,
+
+    pub boundary_weight: f32,
+    pub boundary_radius: f32,
+
+    pub noise_weight: f32,
+    pub noise_scale: f32,
+    pub noise_speed: f32,
+
+    pub predator_weight: f32,
+    pub predator_radius: f32,
+
+    pub fear_decay: f32,
+    pub fear_spread: f32,
+    pub fear_turn_boost: f32,
+
+    pub min_speed: f32,
+    pub max_speed: f32,
+    pub max_turn_rate: f32,
+
+    pub trail_decay: f32,
+    pub exposure: f32,
+    pub fog_density: f32,
+}
+```
+
+The sliders are part of the experience. They turn it from a canned animation into an explorable simulation instrument.
+
+---
+
+# 8. Rendering design
+
+You should not render full bird meshes at first.
+
+Use three rendering levels.
+
+## LOD 0: dots
+
+For far birds or very large counts:
+
+```txt
+1 point or billboard per bird
+fastest
+good for 500k–1M particles
+```
+
+## LOD 1: V-shaped birds
+
+For the main version:
+
+```txt
+tiny velocity-oriented triangle/V mesh
+3–8 triangles per bird
+GPU instanced
+looks bird-like without expensive animation
+```
+
+## LOD 2: animated impostor birds
+
+For close-up mode:
+
+```txt
+billboard sprite or tiny mesh
+wingbeat based on phase
+only for near-camera birds
+```
+
+Start with **LOD 1**.
+
+Each bird instance needs:
+
+```txt
+position
+velocity direction
+fear/local density
+phase
+```
+
+The shader orients the V-shape along velocity.
+
+---
+
+# 9. Visual tricks that make it look real
+
+## A. Turn-wave shading
+
+This is probably the most important aesthetic trick.
+
+When birds turn, the visible surface area changes. Approximate that with:
+
+```txt
+brightness = abs(dot(normalized_velocity, view_direction))
+```
+
+or a variation using side-vector.
+
+This makes large coordinated turns show up as dark/silver ripples.
+
+## B. Fog and depth fade
+
+Use atmospheric perspective:
+
+```txt
+farther birds become lighter / softer
+background haze increases with depth
+```
+
+## C. Density-aware alpha
+
+Approximate dense areas by making birds slightly darker or more opaque when local density is high.
+
+```txt
+alpha = base_alpha + local_density * density_alpha_scale
+```
+
+## D. Trails
+
+Add subtle motion trails, not neon sci-fi trails.
+
+Good trails make the flock feel like fluid.
+
+## E. Sunset sky
+
+Use a procedural gradient sky:
+
+```txt
+horizon warm
+zenith cooler/darker
+sun direction controls highlight
+```
+
+This makes screenshots instantly more compelling.
+
+---
+
+# 10. Neighbor search strategy
+
+This is the hardest simulation part.
+
+## M0 version: no neighbor search
+
+For the first visual demo, use fake flocking:
+
+```txt
+global center attraction
+curl noise
+boundary force
+velocity smoothing
+```
+
+This gets motion on screen fast.
+
+## M1 version: CPU spatial grid
+
+Uniform grid:
+
+```txt
+cell_size = neighbor_radius
+hash position into grid cell
+for each bird, check neighboring 27 cells
+```
+
+This lets you support maybe:
+
+```txt
+10k–50k birds
+```
+
+depending on implementation.
+
+## M2 version: GPU approximate neighbor search
+
+For high-res WebGPU, you have options.
+
+The simplest feasible version:
+
+```txt
+fixed-size spatial grid
+atomic counters per cell
+fixed max birds per cell
+each bird checks nearby cells
+```
+
+This is not perfect, but it is very buildable.
+
+The buffers:
+
+```txt
+bird_buffer_a
+bird_buffer_b
+cell_counts
+cell_indices
+params_buffer
+```
+
+Update flow:
+
+```txt
+clear cell counts
+assign birds to cells
+compute flocking forces from neighbor cells
+write updated birds into output buffer
+swap buffers
+render from latest buffer
+```
+
+This gives you a real GPU simulation architecture.
+
+---
+
+# 11. Milestones
+
+## M0 — Window, camera, and random moving birds
+
+Goal: get something alive on screen immediately.
+
+Tasks:
+
+```txt
+Create Rust workspace
+Set up wgpu + winit
+Create camera
+Create instance buffer
+Spawn 10k birds
+Move them with simple velocity integration
+Render as points or tiny triangles
+```
+
+Acceptance criteria:
+
+```txt
+10k birds visible
+camera orbit works
+stable 60 FPS native
+basic README screenshot
+```
+
+---
+
+## M1 — Beautiful fake murmuration
+
+Goal: make it visually compelling before solving hard neighbor search.
+
+Implement:
+
+```txt
+soft ellipsoid boundary
+curl-noise-like velocity field
+speed clamp
+turn-rate clamp
+global flock center attraction
+V-shaped bird rendering
+sunset gradient background
+depth fog
+```
+
+Acceptance criteria:
+
+```txt
+25k birds move in coherent waves
+the flock does not explode or collapse
+render looks good in screenshots
+```
+
+This is the first “portfolio screenshot” milestone.
+
+---
+
+## M2 — Real CPU boids with spatial grid
+
+Goal: introduce local flocking.
+
+Implement:
+
+```txt
+Bird struct in sim_core
+FlockParams
+CPU spatial grid
+separation/alignment/cohesion
+boundary force
+velocity smoothing
+```
+
+Acceptance criteria:
+
+```txt
+10k birds with true local neighbor behavior
+interactive parameter sliders
+stable flock for 5+ minutes
+```
+
+Important: keep M1 fake-mode as a toggle. Sometimes the fake version will look better.
+
+---
+
+## M3 — Interactive UI and presets
+
+Goal: make the simulation explorable.
+
+Implement UI sliders for:
+
+```txt
+bird count
+separation
+alignment
+cohesion
+noise strength
+noise scale
+boundary radius
+predator strength
+fog
+trail amount
+camera speed
+```
+
+Add presets:
+
+```txt
+Calm Cloud
+Predator Ripple
+Storm Column
+Ribbon Sheet
+Dense Pulse
+```
+
+Acceptance criteria:
+
+```txt
+User can change behavior live
+Presets load instantly
+UI shows FPS and bird count
+```
+
+This makes the project feel like a tool, not a hardcoded demo.
+
+---
+
+## M4 — Predator and fear-wave propagation
+
+Goal: make it actually murmuration-like.
+
+Add predator state:
+
+```rust
+pub struct Predator {
+    pub position: Vec3,
+    pub velocity: Vec3,
+    pub radius: f32,
+    pub strength: f32,
+}
+```
+
+Add per-bird fear:
+
+```txt
+fear increases near predator
+fear decays over time
+fear spreads from neighbors
+fear increases turn responsiveness
+fear affects shading
+```
+
+Behavior:
+
+```txt
+Predator enters flock
+Nearby birds turn sharply
+Fear propagates through neighbor interactions
+A wave passes across the flock
+```
+
+Acceptance criteria:
+
+```txt
+Visible ripple waves
+Flock splits and rejoins
+Motion feels responsive, not random
+```
+
+This is where the project becomes interesting.
+
+---
+
+## M5 — GPU compute simulation
+
+Goal: move update logic onto GPU.
+
+Implement WGSL compute shader:
+
+```txt
+read bird_buffer_a
+compute force
+write bird_buffer_b
+swap buffers
+render bird_buffer_b
+```
+
+Start simple:
+
+```txt
+global forces
+noise
+boundary
+predator
+no spatial grid yet
+```
+
+Then add approximate grid after.
+
+Acceptance criteria:
+
+```txt
+100k birds native
+50k+ birds web target
+compute shader updates positions
+CPU no longer loops through all birds every frame
+```
+
+---
+
+## M6 — GPU spatial grid
+
+Goal: real high-res flocking.
+
+Implement:
+
+```txt
+cell_counts buffer
+cell_bird_indices buffer
+clear pass
+assign pass
+flock update pass
+```
+
+Pseudo-pipeline:
+
+```txt
+Pass 1:
+  clear cell_counts
+
+Pass 2:
+  for each bird:
+    cell = world_to_cell(position)
+    index = atomicAdd(cell_counts[cell], 1)
+    if index < MAX_PER_CELL:
+      cell_bird_indices[cell * MAX_PER_CELL + index] = bird_id
+
+Pass 3:
+  for each bird:
+    inspect 27 nearby cells
+    accumulate separation/alignment/cohesion/fear
+    update velocity and position
+```
+
+Acceptance criteria:
+
+```txt
+100k+ birds with local flock behavior
+no CPU neighbor computation
+stable performance
+```
+
+This is the technically impressive milestone.
+
+---
+
+## M7 — Trails, postprocessing, and cinematic mode
+
+Goal: make it beautiful enough to share.
+
+Add:
+
+```txt
+subtle motion trails
+depth fog
+exposure controls
+sun direction
+camera spline paths
+screenshot export
+optional video capture native-side
+```
+
+Cinematic mode:
+
+```txt
+hide UI
+play camera path
+run preset
+capture frames
+```
+
+Acceptance criteria:
+
+```txt
+30-second demo video looks impressive
+README has GIFs/screenshots
+browser demo feels polished
+```
+
+---
+
+## M8 — Web build
+
+Goal: public shareable version.
+
+Implement:
+
+```txt
+wasm target
+browser canvas
+WebGPU initialization
+quality presets
+reduced default bird count
+mobile unsupported warning if needed
+```
+
+Web quality presets:
+
+```txt
+Low:    10k birds
+Medium: 30k birds
+High:   75k birds
+Ultra:  100k+ birds if supported
+```
+
+Acceptance criteria:
+
+```txt
+runs in browser
+has public URL
+loads into interactive demo without setup
+```
+
+---
+
+# 12. Initial implementation path
+
+Do **not** start with GPU spatial hashing. That is where projects go to die.
+
+Start like this:
+
+```txt
+Week 1:
+  Native wgpu renderer + fake murmuration
+
+Week 2:
+  CPU spatial grid + real boids + UI
+
+Week 3:
+  Predator/fear waves + visual polish
+
+Week 4:
+  GPU compute + web target
+```
+
+The order matters.
+
+You want a beautiful visible artifact early, then improve the internals.
+
+---
+
+# 13. First 7-day build plan
+
+## Day 1 — wgpu window and camera
+
+Build:
+
+```txt
+window
+renderer
+camera
+orbit controls
+basic triangle rendering
+```
+
+Done when:
+
+```txt
+you can fly around a 3D scene
+```
+
+## Day 2 — bird instancing
+
+Build:
+
+```txt
+Bird instance buffer
+10k random birds
+velocity-oriented V meshes
+simple movement
+```
+
+Done when:
+
+```txt
+10k birds move and face direction of travel
+```
+
+## Day 3 — fake murmuration field
+
+Build:
+
+```txt
+ellipsoid boundary
+coherent pseudo-noise force
+global center force
+speed clamp
+turn-rate clamp
+```
+
+Done when:
+
+```txt
+it looks like a flock, even if not true boids yet
+```
+
+## Day 4 — atmosphere and shading
+
+Build:
+
+```txt
+sky gradient
+fog
+turn-wave brightness
+depth fade
+basic sun direction
+```
+
+Done when:
+
+```txt
+screenshots look beautiful
+```
+
+## Day 5 — egui controls
+
+Build:
+
+```txt
+sliders for key params
+FPS counter
+bird count display
+preset dropdown
+```
+
+Done when:
+
+```txt
+you can sculpt the flock live
+```
+
+## Day 6 — CPU spatial grid
+
+Build:
+
+```txt
+uniform grid
+neighbor query
+separation/alignment/cohesion
+```
+
+Done when:
+
+```txt
+5k–20k birds exhibit true flocking
+```
+
+## Day 7 — predator wave
+
+Build:
+
+```txt
+predator path
+fear scalar
+fear decay
+fear affects turn-rate
+fear affects shading
+```
+
+Done when:
+
+```txt
+a visible ripple moves through the flock
+```
+
+At the end of one week, you have a real demo.
+
+---
+
+# 14. Important technical contracts
+
+## Bird GPU layout
+
+```rust
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct GpuBird {
+    pub position: [f32; 4],
+    pub velocity: [f32; 4],
+    pub aux: [f32; 4],
+}
+```
+
+Contract:
+
+```txt
+position.xyz = world position
+position.w   = unused or scale
+
+velocity.xyz = world velocity
+velocity.w   = speed
+
+aux.x = fear
+aux.y = wing phase
+aux.z = local density
+aux.w = random seed
+```
+
+## Params GPU layout
+
+```rust
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct GpuParams {
+    pub dt: f32,
+    pub time: f32,
+    pub bird_count: u32,
+    pub _pad0: u32,
+
+    pub neighbor_radius: f32,
+    pub separation_radius: f32,
+    pub min_speed: f32,
+    pub max_speed: f32,
+
+    pub separation_weight: f32,
+    pub alignment_weight: f32,
+    pub cohesion_weight: f32,
+    pub boundary_weight: f32,
+
+    pub noise_weight: f32,
+    pub noise_scale: f32,
+    pub noise_speed: f32,
+    pub max_turn_rate: f32,
+
+    pub predator_pos: [f32; 4],
+    pub predator_params: [f32; 4],
+}
+```
+
+Contract:
+
+```txt
+predator_pos.xyz = predator position
+predator_params.x = radius
+predator_params.y = strength
+predator_params.z = enabled flag
+predator_params.w = unused
+```
+
+---
+
+# 15. Shader pipeline
+
+You will likely have these WGSL files:
+
+```txt
+render_birds.wgsl
+update_birds.wgsl
+assign_grid.wgsl
+clear_grid.wgsl
+sky.wgsl
+trails.wgsl
+```
+
+Minimum viable shader set:
+
+```txt
+render_birds.wgsl
+update_birds.wgsl
+```
+
+Do not overbuild early.
+
+---
+
+# 16. README positioning
+
+The README should not say:
+
+> “I made a boids simulation.”
+
+It should say:
+
+> “A high-density WebGPU murmuration engine exploring emergent motion, local coordination, and perturbation-wave propagation in large multi-agent systems.”
+
+Then include sections:
+
+```txt
+Features
+Architecture
+Simulation model
+Rendering model
+Performance
+Native vs Web build
+Screenshots
+Future work
+```
+
+Use this framing:
+
+```txt
+This project sits at the intersection of:
+- GPU programming
+- real-time simulation
+- artificial life
+- multi-agent systems
+- graphics
+- embodied AI visualization
+```
+
+That is much stronger.
+
+---
+
+# 17. What makes this impressive
+
+The impressive parts are:
+
+```txt
+Real-time high-density rendering
+GPU instancing
+GPU compute
+Spatial acceleration
+Emergent behavior
+Interactive controls
+Browser deployment
+Cinematic presentation
+```
+
+But the deeper signal is:
+
+> You can build complex systems where simple local rules produce large-scale coherent behavior.
+
+That maps directly onto robotics, simulation, AI agents, embodied perception, graphics, and systems.
+
+---
+
+# 18. Possible extensions
+
+## Research-y extension
+
+**Inverse Murmuration**
+
+Fit simulation parameters to real video by comparing:
+
+```txt
+2D density maps
+optical flow
+temporal wave speed
+silhouette dynamics
+```
+
+## ML extension
+
+Train a small neural policy to imitate the handcrafted boids update.
+
+```txt
+Input: local neighborhood summary
+Output: steering acceleration
+Loss: match handcrafted flock dynamics or video-derived flow
+```
+
+## Artistic extension
+
+Turn it into an audiovisual instrument.
+
+```txt
+flock density controls sound texture
+fear waves trigger granular synthesis
+camera position modulates reverb/filtering
+```
+
+## Robotics extension
+
+Use it as a visual metaphor for swarm coordination.
+
+```txt
+local policy
+limited communication
+emergent global structure
+disturbance response
+```
+
+---
+
+# 19. The best MVP scope
+
+The cleanest first public version:
+
+```txt
+Native Rust/wgpu app
+50k V-shaped birds
+fake murmuration field + partial boids
+predator ripple
+egui sliders
+cinematic sky/fog
+README with screenshots
+```
+
+Then second phase:
+
+```txt
+WebGPU browser build
+25k–75k birds
+quality presets
+public demo URL
+```
+
+Then third phase:
+
+```txt
+GPU spatial grid
+100k–500k birds
+writeup on performance architecture
+```
+
+---
+
+# 20. Final artifact description
+
+The finished project should be describable in one sentence:
+
+> **Murmuration Engine is a Rust/WebGPU real-time simulation of high-density flocking behavior, using GPU-accelerated rendering and local agent dynamics to produce cinematic emergent waves inspired by starling murmurations.**
+
+That is a genuinely strong portfolio piece.
+

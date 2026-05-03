@@ -1,0 +1,10 @@
+[package]
+name = "native_app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+renderer_wgpu = { path = "../renderer_wgpu" }
+sim_core = { path = "../sim_core" }
+
