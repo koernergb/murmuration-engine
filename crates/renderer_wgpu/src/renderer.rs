@@ -21,6 +21,7 @@ pub struct Renderer<'window> {
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
     size: PhysicalSize<u32>,
+    sky_pipeline: wgpu::RenderPipeline,
     render_pipeline: wgpu::RenderPipeline,
     bird_vertex_buffer: wgpu::Buffer,
     bird_vertex_count: u32,
@@ -84,7 +85,12 @@ impl<'window> Renderer<'window> {
         surface.configure(&device, &config);
 
         let camera = Camera::default();
-        let camera_uniform = camera.build_uniform(config.width as f32 / config.height as f32, 0.0);
+        let bootstrap_params = FlockParams::default();
+        let camera_uniform = camera.build_uniform(
+            config.width as f32 / config.height as f32,
+            0.0,
+            &bootstrap_params,
+        );
         let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("camera-buffer"),
             contents: bytemuck::bytes_of(&camera_uniform),
@@ -119,6 +125,12 @@ impl<'window> Renderer<'window> {
                 include_str!("../../../assets/shaders/render_birds.wgsl").into(),
             ),
         });
+        let sky_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("sky-shader"),
+            source: wgpu::ShaderSource::Wgsl(
+                include_str!("../../../assets/shaders/sky.wgsl").into(),
+            ),
+        });
 
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -126,6 +138,41 @@ impl<'window> Renderer<'window> {
                 bind_group_layouts: &[&camera_bind_group_layout],
                 push_constant_ranges: &[],
             });
+        let sky_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("sky-pipeline-layout"),
+            bind_group_layouts: &[&camera_bind_group_layout],
+            push_constant_ranges: &[],
+        });
+        let sky_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("sky-render-pipeline"),
+            layout: Some(&sky_pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &sky_shader,
+                entry_point: "vs_main",
+                buffers: &[],
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &sky_shader,
+                entry_point: "fs_main",
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: config.format,
+                    blend: None,
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                strip_index_format: None,
+                front_face: wgpu::FrontFace::Ccw,
+                cull_mode: None,
+                unclipped_depth: false,
+                polygon_mode: wgpu::PolygonMode::Fill,
+                conservative: false,
+            },
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState::default(),
+            multiview: None,
+        });
 
         let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("bird-render-pipeline"),
@@ -224,6 +271,7 @@ impl<'window> Renderer<'window> {
             queue,
             config,
             size,
+            sky_pipeline,
             render_pipeline,
             bird_vertex_buffer,
             bird_vertex_count: bird_vertices.len() as u32,
@@ -266,8 +314,11 @@ impl<'window> Renderer<'window> {
         }
 
         let camera_uniform =
-            self.camera
-                .build_uniform(self.config.width as f32 / self.config.height as f32, time_seconds);
+            self.camera.build_uniform(
+                self.config.width as f32 / self.config.height as f32,
+                time_seconds,
+                _params,
+            );
         self.queue
             .write_buffer(&self.camera_buffer, 0, bytemuck::bytes_of(&camera_uniform));
 
@@ -295,12 +346,7 @@ impl<'window> Renderer<'window> {
                     view: &view,
                     resolve_target: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.07,
-                            g: 0.10,
-                            b: 0.16,
-                            a: 1.0,
-                        }),
+                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
                         store: wgpu::StoreOp::Store,
                     },
                 })],
@@ -308,6 +354,10 @@ impl<'window> Renderer<'window> {
                 occlusion_query_set: None,
                 timestamp_writes: None,
             });
+
+            render_pass.set_pipeline(&self.sky_pipeline);
+            render_pass.set_bind_group(0, &self.camera_bind_group, &[]);
+            render_pass.draw(0..3, 0..1);
 
             render_pass.set_pipeline(&self.render_pipeline);
             render_pass.set_bind_group(0, &self.camera_bind_group, &[]);

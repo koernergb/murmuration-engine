@@ -1,11 +1,27 @@
 use crate::Bird;
 
-pub fn integrate_linear(bird: &mut Bird, dt: f32, min_speed: f32, max_speed: f32) {
+pub fn integrate_linear(
+    bird: &mut Bird,
+    dt: f32,
+    min_speed: f32,
+    max_speed: f32,
+    max_turn_rate: f32,
+) {
     let dt = dt.max(0.0);
+    let previous_velocity = bird.velocity;
     let speed = magnitude(bird.velocity).clamp(min_speed, max_speed);
 
     if speed > 0.0 {
-        let direction = normalize_or_zero(bird.velocity);
+        let mut direction = normalize_or_zero(bird.velocity);
+        let previous_direction = normalize_or_zero(previous_velocity);
+        let max_turn_angle = max_turn_rate.max(0.01) * dt;
+        let turn_angle = angle_between(previous_direction, direction);
+
+        if turn_angle > max_turn_angle && max_turn_angle > 0.0 {
+            let blend = (max_turn_angle / turn_angle).clamp(0.0, 1.0);
+            direction = normalize_or_zero(lerp(previous_direction, direction, blend));
+        }
+
         bird.velocity = scale(direction, speed);
     }
 
@@ -34,3 +50,18 @@ fn add(a: [f32; 3], b: [f32; 3]) -> [f32; 3] {
     [a[0] + b[0], a[1] + b[1], a[2] + b[2]]
 }
 
+fn lerp(a: [f32; 3], b: [f32; 3], t: f32) -> [f32; 3] {
+    add(scale(a, 1.0 - t), scale(b, t))
+}
+
+fn angle_between(a: [f32; 3], b: [f32; 3]) -> f32 {
+    let a_mag = magnitude(a);
+    let b_mag = magnitude(b);
+
+    if a_mag <= f32::EPSILON || b_mag <= f32::EPSILON {
+        return 0.0;
+    }
+
+    let dot = ((a[0] * b[0]) + (a[1] * b[1]) + (a[2] * b[2])) / (a_mag * b_mag);
+    dot.clamp(-1.0, 1.0).acos()
+}
