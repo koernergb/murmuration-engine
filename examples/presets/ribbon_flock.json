@@ -1,6 +1,6 @@
 {
   "name": "Ribbon Sheet",
-  "bird_count": 3400,
+  "bird_count": 65000,
   "alignment_weight": 1.0,
   "cohesion_weight": 0.45,
   "boundary_radius": 28.0

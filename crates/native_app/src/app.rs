@@ -1,9 +1,12 @@
 use std::error::Error;
 use std::time::Instant;
 
-use renderer_wgpu::Renderer;
+use renderer_wgpu::{camera::Camera, Renderer};
 use sim_core::{Bird, FlockParams, SimulationState};
-use winit::{dpi::PhysicalSize, window::Window};
+use winit::{
+    dpi::{PhysicalPosition, PhysicalSize},
+    window::Window,
+};
 
 use crate::input::AppAction;
 use crate::ui::{self, RuntimeStats, UiState};
@@ -14,6 +17,8 @@ pub struct NativeApp<'window> {
     last_frame: Instant,
     stats: RuntimeStats,
     ui: UiState,
+    cursor_position: Option<PhysicalPosition<f64>>,
+    camera: Camera,
 }
 
 impl<'window> NativeApp<'window> {
@@ -35,6 +40,8 @@ impl<'window> NativeApp<'window> {
                 fog_density: FlockParams::default().fog_density,
             },
             ui: UiState::default(),
+            cursor_position: None,
+            camera: Camera::default(),
         })
     }
 
@@ -46,6 +53,12 @@ impl<'window> NativeApp<'window> {
         let now = Instant::now();
         let dt = (now - self.last_frame).as_secs_f32().clamp(1.0 / 240.0, 1.0 / 24.0);
         self.last_frame = now;
+        let cursor_world = self.cursor_position.and_then(|cursor| {
+            self.camera
+                .screen_to_focus_point(self.renderer.size(), cursor, self.simulation.time_seconds())
+                .map(|world| world.to_array())
+        });
+        self.simulation.set_cursor_repulsor(cursor_world);
         self.simulation.step(dt);
         self.update_stats(dt);
     }
@@ -62,6 +75,10 @@ impl<'window> NativeApp<'window> {
         self.renderer.size()
     }
 
+    pub fn set_cursor_position(&mut self, cursor_position: Option<PhysicalPosition<f64>>) {
+        self.cursor_position = cursor_position;
+    }
+
     pub fn handle_action(&mut self, action: AppAction) {
         match action {
             AppAction::ApplyPreset(index) => {
@@ -74,7 +91,7 @@ impl<'window> NativeApp<'window> {
                 }
             }
             AppAction::AdjustBirdCount(delta) => {
-                let new_count = (self.simulation.params().bird_count as i32 + delta).clamp(600, 6_000);
+                let new_count = (self.simulation.params().bird_count as i32 + delta).clamp(5_000, 100_000);
                 self.simulation.params_mut().bird_count = new_count as u32;
                 self.reseed_birds();
             }

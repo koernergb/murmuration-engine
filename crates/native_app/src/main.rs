@@ -36,6 +36,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
 
                 match event {
+                    WindowEvent::CursorMoved { position, .. } => {
+                        app.set_cursor_position(Some(position));
+                    }
+                    WindowEvent::CursorLeft { .. } => {
+                        app.set_cursor_position(None);
+                    }
                     WindowEvent::Resized(size) => {
                         app.resize(size);
                         window.set_title(&app.window_title());

@@ -68,23 +68,38 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
     let normal = normalize(basis * local_normal);
     let reflected = reflect(-view_direction, normal);
     let sky_mix = clamp(reflected.y * 0.5 + 0.5, 0.0, 1.0);
-    let env = mix(camera.horizon_color.xyz, camera.zenith_color.xyz, sky_mix);
-    let highlight = pow(max(0.0, dot(reflected, sun_direction)), 18.0);
-    let fresnel = pow(1.0 - max(0.0, dot(normal, view_direction)), 3.4);
+    let horizon_band = exp(-abs(reflected.y) * 24.0);
+    let ground_color = camera.horizon_color.xyz * vec3<f32>(0.72, 0.68, 0.66);
+    let sky_color = mix(camera.horizon_color.xyz, camera.zenith_color.xyz, sky_mix);
+    let env = mix(ground_color, sky_color, smoothstep(0.06, 0.94, sky_mix));
+    let banded_env = env + camera.horizon_color.xyz * horizon_band * 0.92;
+    let highlight = pow(max(0.0, dot(reflected, sun_direction)), 32.0);
+    let secondary_highlight = pow(max(0.0, dot(reflected, normalize(sun_direction + vec3<f32>(0.0, 0.35, 0.0)))), 18.0);
+    let fresnel = pow(1.0 - max(0.0, dot(normal, view_direction)), 4.6);
     let diffuse = max(0.0, dot(normal, sun_direction));
     let core_shadow = smoothstep(0.0, 1.0, input.density);
-    let chrome = env * (0.10 + fresnel * 0.26) + vec3<f32>(1.0) * highlight * 0.22;
-    let base = mix(vec3<f32>(0.0005, 0.0007, 0.001), vec3<f32>(0.014, 0.016, 0.018), core_shadow);
+    let cloud_radius = 30.0;
+    let cloud_normal = normalize(vec3<f32>(
+        input.center_world_position.x / cloud_radius,
+        input.center_world_position.y / (cloud_radius * 0.35),
+        input.center_world_position.z / cloud_radius
+    ));
+    let cloud_light = clamp(dot(-cloud_normal, sun_direction) * 0.5 + 0.5, 0.0, 1.0);
+    let cloud_shadow = mix(0.42, 1.18, cloud_light);
+    let chrome = banded_env * (0.28 + fresnel * 1.05)
+        + vec3<f32>(1.0) * highlight * 1.05
+        + camera.horizon_color.xyz * secondary_highlight * 0.42;
+    let base = mix(vec3<f32>(0.0, 0.0, 0.0), vec3<f32>(0.008, 0.009, 0.010), core_shadow);
     let silhouette = smoothstep(1.0, 0.22, radius2);
     let rim = pow(1.0 - max(0.0, dot(normal, view_direction)), 1.6);
-    let lit = mix(base, chrome, 0.22) + vec3<f32>(0.010) * diffuse + vec3<f32>(0.035) * rim * 0.08;
+    let lit = (mix(base, chrome, 0.78) + vec3<f32>(0.008) * diffuse + vec3<f32>(0.05) * rim * 0.14) * cloud_shadow;
     let distance_to_eye = distance(camera.eye.xyz, input.center_world_position);
     let fog_factor = 1.0 - exp(-distance_to_eye * fog_density * 0.045);
     let fog_color = mix(camera.horizon_color.xyz, camera.zenith_color.xyz, 0.62);
-    let edge = smoothstep(1.0, 0.0, radius2);
-    let core = smoothstep(1.0, 0.12, radius2);
-    let alpha = edge * (0.16 + input.density * 0.26) * (0.58 + core * 0.42);
-    let color = mix(lit, fog_color, clamp(fog_factor, 0.0, 0.72)) * exposure;
-    let final_color = mix(color * 0.78, color, silhouette);
+    let edge = smoothstep(1.0, 0.78, radius2);
+    let core = smoothstep(1.0, 0.08, radius2);
+    let alpha = edge * (0.18 + input.density * 0.24) * (0.60 + core * 0.40);
+    let color = mix(lit, fog_color, clamp(fog_factor, 0.0, 0.66)) * exposure;
+    let final_color = mix(color * 0.86, color, silhouette);
     return vec4<f32>(final_color, alpha);
 }

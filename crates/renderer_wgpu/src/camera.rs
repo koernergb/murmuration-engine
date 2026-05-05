@@ -1,6 +1,7 @@
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec3, Vec4};
 use sim_core::FlockParams;
+use winit::dpi::{PhysicalPosition, PhysicalSize};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Camera {
@@ -55,12 +56,51 @@ impl Camera {
             view_proj: view_proj.to_cols_array_2d(),
             inverse_view_proj: inverse_view_proj.to_cols_array_2d(),
             eye: eye.extend(1.0).to_array(),
-            horizon_color: Vec4::new(0.94, 0.76, 0.58, 1.0).to_array(),
-            zenith_color: Vec4::new(0.17, 0.21, 0.30, 1.0).to_array(),
+            horizon_color: Vec4::new(0.88, 0.71, 0.55, 1.0).to_array(),
+            zenith_color: Vec4::new(0.13, 0.17, 0.26, 1.0).to_array(),
             sun_direction: sun_direction.extend(0.0).to_array(),
             atmosphere: Vec4::new(params.fog_density, params.exposure, time_seconds, 0.0)
                 .to_array(),
         }
+    }
+
+    pub fn screen_to_focus_point(
+        &self,
+        size: PhysicalSize<u32>,
+        cursor: PhysicalPosition<f64>,
+        time_seconds: f32,
+    ) -> Option<Vec3> {
+        if size.width == 0 || size.height == 0 {
+            return None;
+        }
+
+        let aspect_ratio = size.width as f32 / size.height as f32;
+        let eye = self.eye(time_seconds);
+        let view = Mat4::look_at_rh(eye, self.target, Vec3::Y);
+        let projection =
+            Mat4::perspective_rh(self.fov_y_radians, aspect_ratio, self.z_near, self.z_far);
+        let inverse_view_proj = (projection * view).inverse();
+
+        let ndc_x = ((cursor.x as f32 / size.width as f32) * 2.0) - 1.0;
+        let ndc_y = 1.0 - ((cursor.y as f32 / size.height as f32) * 2.0);
+        let near = inverse_view_proj * Vec4::new(ndc_x, ndc_y, 0.0, 1.0);
+        let far = inverse_view_proj * Vec4::new(ndc_x, ndc_y, 1.0, 1.0);
+        let near_world = near.truncate() / near.w;
+        let far_world = far.truncate() / far.w;
+        let ray_direction = (far_world - near_world).normalize_or_zero();
+        let plane_normal = (self.target - eye).normalize_or_zero();
+        let denominator = ray_direction.dot(plane_normal);
+
+        if denominator.abs() <= 1e-5 {
+            return None;
+        }
+
+        let t = (self.target - near_world).dot(plane_normal) / denominator;
+        if t < 0.0 {
+            return None;
+        }
+
+        Some(near_world + ray_direction * t)
     }
 }
 

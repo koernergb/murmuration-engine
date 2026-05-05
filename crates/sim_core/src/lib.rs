@@ -12,6 +12,7 @@ pub struct SimulationState {
     birds: Vec<Bird>,
     params: FlockParams,
     time_seconds: f32,
+    cursor_repulsor: Option<[f32; 3]>,
 }
 
 impl SimulationState {
@@ -20,6 +21,7 @@ impl SimulationState {
             birds,
             params,
             time_seconds: 0.0,
+            cursor_repulsor: None,
         }
     }
 
@@ -41,6 +43,10 @@ impl SimulationState {
 
     pub fn replace_birds(&mut self, birds: Vec<Bird>) {
         self.birds = birds;
+    }
+
+    pub fn set_cursor_repulsor(&mut self, cursor_repulsor: Option<[f32; 3]>) {
+        self.cursor_repulsor = cursor_repulsor;
     }
 
     pub fn step(&mut self, dt: f32) {
@@ -106,6 +112,19 @@ impl SimulationState {
             );
 
             bird.velocity = add3(bird.velocity, scale3(steering, dt));
+            if let Some(cursor_repulsor) = self.cursor_repulsor {
+                let offset = sub3(bird.position, cursor_repulsor);
+                let cursor_radius = boundary_radius * 0.26;
+                let distance = length3(offset);
+                if distance < cursor_radius && distance > 0.001 {
+                    let repel_strength = ((cursor_radius - distance) / cursor_radius).powi(2) * 22.0;
+                    bird.velocity = add3(
+                        bird.velocity,
+                        scale3(normalize_or_zero(offset), repel_strength * dt),
+                    );
+                    bird.fear = bird.fear.max(0.18 * (1.0 - distance / cursor_radius));
+                }
+            }
             integrator::integrate_linear(
                 bird,
                 dt,

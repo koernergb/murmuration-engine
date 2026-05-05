@@ -27,7 +27,7 @@ pub struct FlockParams {
 impl Default for FlockParams {
     fn default() -> Self {
         Self {
-            bird_count: 2600,
+            bird_count: 50_000,
             neighbor_radius: 8.0,
             separation_radius: 3.0,
             separation_weight: 1.2,
