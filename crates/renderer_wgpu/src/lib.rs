@@ -6,4 +6,3 @@ pub mod sky;
 pub mod trail_renderer;
 
 pub use renderer::Renderer;
-

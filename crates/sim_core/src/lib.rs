@@ -117,7 +117,8 @@ impl SimulationState {
                 let cursor_radius = boundary_radius * 0.26;
                 let distance = length3(offset);
                 if distance < cursor_radius && distance > 0.001 {
-                    let repel_strength = ((cursor_radius - distance) / cursor_radius).powi(2) * 22.0;
+                    let repel_strength =
+                        ((cursor_radius - distance) / cursor_radius).powi(2) * 22.0;
                     bird.velocity = add3(
                         bird.velocity,
                         scale3(normalize_or_zero(offset), repel_strength * dt),
@@ -187,7 +188,10 @@ fn soft_boundary_force(position: [f32; 3], radius: f32) -> [f32; 3] {
     }
 
     let pressure = ((extent - 0.72) / 0.28).clamp(0.0, 1.6);
-    scale3(normalize_or_zero(scale3(position, -1.0)), pressure * pressure * 3.2)
+    scale3(
+        normalize_or_zero(scale3(position, -1.0)),
+        pressure * pressure * 3.2,
+    )
 }
 
 fn fake_curl_noise(position: [f32; 3], phase: f32, scale: f32) -> [f32; 3] {

@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "crates/app_core",
     "crates/sim_core",
     "crates/renderer_wgpu",
     "crates/native_app",

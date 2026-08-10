@@ -30,8 +30,38 @@ This repository is scaffolded for Phase 0. The next implementation step is openi
 
 ## Development
 
+Install Rust through [rustup](https://rustup.rs/), then run the native application:
+
 ```bash
 cargo check
 cargo run -p native_app
 ```
 
+## Web MVP
+
+The browser experience reuses the Rust simulation and `wgpu` renderer through WebAssembly and WebGPU. It includes pointer interaction, four presets, 10k/25k/50k quality tiers, pause/reset controls, live diagnostics, responsive resizing, and an unsupported-browser state.
+
+Install the browser build tools once:
+
+```bash
+rustup target add wasm32-unknown-unknown
+cargo install --locked trunk
+```
+
+Run the local web experience:
+
+```bash
+cd crates/web_app
+trunk serve --open
+```
+
+Create an optimized static bundle:
+
+```bash
+cd crates/web_app
+trunk build --release
+```
+
+The production files are written to `crates/web_app/dist` and can be deployed to any HTTPS static host. WebGPU must be available in the visitor's browser.
+
+See [docs/web_mvp.md](docs/web_mvp.md) for architecture, scope, testing, and follow-up work.

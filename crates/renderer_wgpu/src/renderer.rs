@@ -38,7 +38,10 @@ pub struct Renderer<'window> {
 }
 
 impl<'window> Renderer<'window> {
-    pub async fn new(window: &'window Window, bird_capacity: usize) -> Result<Self, Box<dyn Error>> {
+    pub async fn new(
+        window: &'window Window,
+        bird_capacity: usize,
+    ) -> Result<Self, Box<dyn Error>> {
         let size = window.inner_size();
         let instance = wgpu::Instance::default();
         let surface = instance.create_surface(window)?;
@@ -51,12 +54,18 @@ impl<'window> Renderer<'window> {
             .await
             .ok_or("no suitable GPU adapters found")?;
 
+        #[cfg(target_arch = "wasm32")]
+        let required_limits =
+            wgpu::Limits::downlevel_webgl2_defaults().using_resolution(adapter.limits());
+        #[cfg(not(target_arch = "wasm32"))]
+        let required_limits = wgpu::Limits::default();
+
         let (device, queue) = adapter
             .request_device(
                 &wgpu::DeviceDescriptor {
                     label: Some("murmuration-device"),
                     required_features: wgpu::Features::empty(),
-                    required_limits: wgpu::Limits::default(),
+                    required_limits,
                 },
                 None,
             )
@@ -344,12 +353,11 @@ impl<'window> Renderer<'window> {
             self.grow_instance_buffer(birds.len());
         }
 
-        let camera_uniform =
-            self.camera.build_uniform(
-                self.config.width as f32 / self.config.height as f32,
-                time_seconds,
-                _params,
-            );
+        let camera_uniform = self.camera.build_uniform(
+            self.config.width as f32 / self.config.height as f32,
+            time_seconds,
+            _params,
+        );
         self.queue
             .write_buffer(&self.camera_buffer, 0, bytemuck::bytes_of(&camera_uniform));
 

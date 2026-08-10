@@ -15,7 +15,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_inner_size(winit::dpi::LogicalSize::new(1440.0, 900.0))
         .build(&event_loop)?;
     let mut app = pollster::block_on(NativeApp::new(&window))?;
-    window.set_title(&app.window_title());
+    window.set_title(&ui::window_title(
+        app.active_preset(),
+        app.stats(),
+        app.is_paused(),
+    ));
 
     println!("{}", app.summary());
 
@@ -30,8 +34,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
 
                 if let Some(action) = action_for_event(&event) {
-                    app.handle_action(action);
-                    window.set_title(&app.window_title());
+                    app.handle_command(action);
+                    window.set_title(&ui::window_title(
+                        app.active_preset(),
+                        app.stats(),
+                        app.is_paused(),
+                    ));
                     return;
                 }
 
@@ -44,11 +52,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                     WindowEvent::Resized(size) => {
                         app.resize(size);
-                        window.set_title(&app.window_title());
+                        window.set_title(&ui::window_title(
+                            app.active_preset(),
+                            app.stats(),
+                            app.is_paused(),
+                        ));
                     }
                     WindowEvent::RedrawRequested => {
                         app.update();
-                        window.set_title(&app.window_title());
+                        window.set_title(&ui::window_title(
+                            app.active_preset(),
+                            app.stats(),
+                            app.is_paused(),
+                        ));
                         match app.render() {
                             Ok(()) => {}
                             Err(wgpu::SurfaceError::Lost) => app.resize(app.renderer_size()),
