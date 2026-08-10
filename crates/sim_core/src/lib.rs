@@ -114,11 +114,11 @@ impl SimulationState {
             bird.velocity = add3(bird.velocity, scale3(steering, dt));
             if let Some(cursor_repulsor) = self.cursor_repulsor {
                 let offset = sub3(bird.position, cursor_repulsor);
-                let cursor_radius = boundary_radius * 0.26;
+                let cursor_radius = boundary_radius * self.params.cursor_radius_ratio;
                 let distance = length3(offset);
                 if distance < cursor_radius && distance > 0.001 {
-                    let repel_strength =
-                        ((cursor_radius - distance) / cursor_radius).powi(2) * 22.0;
+                    let repel_strength = ((cursor_radius - distance) / cursor_radius).powi(2)
+                        * self.params.cursor_weight;
                     bird.velocity = add3(
                         bird.velocity,
                         scale3(normalize_or_zero(offset), repel_strength * dt),

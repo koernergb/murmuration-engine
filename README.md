@@ -64,3 +64,8 @@ Create an optimized static bundle:
 The production files are written to `dist/client`, with a minimal static asset worker in `dist/server`. The bundle can be deployed to an HTTPS static host or packaged for OpenAI Sites. WebGPU must be available in the visitor's browser.
 
 See [docs/web_mvp.md](docs/web_mvp.md) for architecture, scope, testing, and follow-up work.
+
+For embedding the simulation behind another site, see
+[docs/background_integration.md](docs/background_integration.md). A release build writes
+the copy-ready browser module to `dist/embed/` while retaining the standalone demo in
+`dist/client/`.

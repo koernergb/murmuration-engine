@@ -1,6 +1,7 @@
 use std::error::Error;
+use std::sync::Arc;
 
-use renderer_wgpu::{camera::Camera, Renderer};
+use renderer_wgpu::{camera::Camera, RenderPalette, Renderer};
 use serde::Deserialize;
 use sim_core::{Bird, FlockParams, SimulationState};
 use web_time::Instant;
@@ -159,6 +160,28 @@ impl<'window> MurmurationApp<'window> {
         self.refresh_stats_from_params();
     }
 
+    pub fn set_paused(&mut self, paused: bool) {
+        self.paused = paused;
+        self.last_frame = Instant::now();
+    }
+
+    pub fn set_palette(&mut self, palette: RenderPalette) {
+        self.renderer.set_palette(palette);
+    }
+
+    pub fn configure_low_power_background(&mut self) {
+        self.apply_preset(0, true);
+        let params = self.simulation.params_mut();
+        params.noise_weight = 0.18;
+        params.noise_speed = 0.12;
+        params.cursor_weight = 6.0;
+        params.cursor_radius_ratio = 0.18;
+        params.max_speed = params.max_speed.min(3.2);
+        params.max_turn_rate = params.max_turn_rate.min(2.1);
+        params.fog_density = 0.045;
+        self.refresh_stats_from_params();
+    }
+
     pub fn apply_preset(&mut self, index: usize, preserve_bird_count: bool) {
         if index >= PRESET_FILES.len() {
             return;
@@ -220,6 +243,30 @@ impl<'window> MurmurationApp<'window> {
         self.stats.noise_weight = params.noise_weight;
         self.stats.boundary_radius = params.boundary_radius;
         self.stats.fog_density = params.fog_density;
+    }
+}
+
+impl MurmurationApp<'static> {
+    pub async fn new_owned_with_bird_count(
+        window: Arc<Window>,
+        bird_count: u32,
+    ) -> Result<Self, Box<dyn Error>> {
+        let mut params = FlockParams::default();
+        params.bird_count = bird_count.clamp(1_000, 100_000);
+        let birds = seed_birds(params.bird_count as usize);
+        let stats = stats_for(&params, birds.len());
+        let renderer = Renderer::new_owned(window, birds.len()).await?;
+
+        Ok(Self {
+            renderer,
+            simulation: SimulationState::new(birds, params),
+            last_frame: Instant::now(),
+            stats,
+            cursor_position: None,
+            camera: Camera::default(),
+            active_preset: 0,
+            paused: false,
+        })
     }
 }
 

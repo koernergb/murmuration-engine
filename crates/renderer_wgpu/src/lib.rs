@@ -5,4 +5,5 @@ pub mod renderer;
 pub mod sky;
 pub mod trail_renderer;
 
+pub use camera::RenderPalette;
 pub use renderer::Renderer;

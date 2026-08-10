@@ -6,6 +6,9 @@ struct CameraUniform {
     zenith_color: vec4<f32>,
     sun_direction: vec4<f32>,
     atmosphere: vec4<f32>,
+    ivory_color: vec4<f32>,
+    brass_color: vec4<f32>,
+    rust_color: vec4<f32>,
 }
 
 @group(0) @binding(0)
@@ -69,7 +72,7 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
     let reflected = reflect(-view_direction, normal);
     let sky_mix = clamp(reflected.y * 0.5 + 0.5, 0.0, 1.0);
     let horizon_band = exp(-abs(reflected.y) * 24.0);
-    let ground_color = camera.horizon_color.xyz * vec3<f32>(0.72, 0.68, 0.66);
+    let ground_color = mix(camera.rust_color.xyz, camera.horizon_color.xyz, 0.56);
     let sky_color = mix(camera.horizon_color.xyz, camera.zenith_color.xyz, sky_mix);
     let env = mix(ground_color, sky_color, smoothstep(0.06, 0.94, sky_mix));
     let banded_env = env + camera.horizon_color.xyz * horizon_band * 0.92;
@@ -87,9 +90,9 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
     let cloud_light = clamp(dot(-cloud_normal, sun_direction) * 0.5 + 0.5, 0.0, 1.0);
     let cloud_shadow = mix(0.42, 1.18, cloud_light);
     let chrome = banded_env * (0.28 + fresnel * 1.05)
-        + vec3<f32>(1.0) * highlight * 1.05
-        + camera.horizon_color.xyz * secondary_highlight * 0.42;
-    let base = mix(vec3<f32>(0.0, 0.0, 0.0), vec3<f32>(0.008, 0.009, 0.010), core_shadow);
+        + camera.ivory_color.xyz * highlight * 1.05
+        + camera.brass_color.xyz * secondary_highlight * 0.42;
+    let base = mix(camera.zenith_color.xyz, camera.zenith_color.xyz * 0.16, core_shadow);
     let silhouette = smoothstep(1.0, 0.22, radius2);
     let rim = pow(1.0 - max(0.0, dot(normal, view_direction)), 1.6);
     let lit = (mix(base, chrome, 0.78) + vec3<f32>(0.008) * diffuse + vec3<f32>(0.05) * rim * 0.14) * cloud_shadow;
