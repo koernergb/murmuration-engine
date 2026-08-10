@@ -69,7 +69,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             Ok(()) => {}
                             Err(wgpu::SurfaceError::Lost) => app.resize(app.renderer_size()),
                             Err(wgpu::SurfaceError::OutOfMemory) => target.exit(),
-                            Err(wgpu::SurfaceError::Outdated | wgpu::SurfaceError::Timeout) => {}
+                            Err(
+                                wgpu::SurfaceError::Outdated
+                                | wgpu::SurfaceError::Timeout
+                                | wgpu::SurfaceError::Other,
+                            ) => {}
                         }
                     }
                     _ => {}

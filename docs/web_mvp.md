@@ -1,5 +1,20 @@
 # Web MVP Plan
 
+## Implementation Status
+
+The browser MVP described here was implemented in August 2026. The delivered version includes:
+
+- shared Rust application state used by both native and browser shells
+- WebAssembly startup through Trunk and `wasm-bindgen`
+- current-browser WebGPU support through `wgpu` 26
+- responsive canvas sizing with device-pixel-ratio handling
+- pointer repulsion, keyboard shortcuts, presets, and quality tiers
+- pause, reset, diagnostics, loading, and failure states
+- optimized production packaging for static hosting and OpenAI Sites
+- native workspace tests, WASM compile checks, optimized bundle verification, live WebGPU startup testing, control testing, and a 390 × 844 responsive layout check
+
+GPU compute simulation, a GPU spatial grid, broad cross-device profiling, touch-specific behavior, and a WebGL fallback remain post-MVP work.
+
 ## Goal
 
 Ship Murmuration Engine as an interactive browser experience while preserving the existing Rust simulation, `wgpu` renderer, and WGSL shaders.

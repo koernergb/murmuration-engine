@@ -260,9 +260,15 @@
         .stat:last-child { display: none; }
         .footer { display: block; }
         .hint { margin-bottom: 0.65rem; }
-        .controls { width: 100%; overflow-x: auto; align-items: end; }
-        .controls button { flex: 0 0 auto; }
-        select { min-width: 7.6rem; }
+        .controls {
+          width: 100%;
+          display: grid;
+          grid-template-columns: repeat(6, minmax(0, 1fr));
+          align-items: end;
+        }
+        .controls .field { grid-column: span 3; min-width: 0; }
+        .controls button { grid-column: span 2; min-width: 0; padding-inline: 0.5rem; }
+        select { width: 100%; min-width: 0; }
       }
 
       @media (prefers-reduced-motion: reduce) {

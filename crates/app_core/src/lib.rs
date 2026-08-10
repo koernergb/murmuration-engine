@@ -1,9 +1,9 @@
 use std::error::Error;
-use std::time::Instant;
 
 use renderer_wgpu::{camera::Camera, Renderer};
 use serde::Deserialize;
 use sim_core::{Bird, FlockParams, SimulationState};
+use web_time::Instant;
 use winit::{
     dpi::{PhysicalPosition, PhysicalSize},
     window::Window,

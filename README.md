@@ -58,10 +58,9 @@ trunk serve --open
 Create an optimized static bundle:
 
 ```bash
-cd crates/web_app
-trunk build --release
+./scripts/build-web.sh
 ```
 
-The production files are written to `crates/web_app/dist` and can be deployed to any HTTPS static host. WebGPU must be available in the visitor's browser.
+The production files are written to `dist/client`, with a minimal static asset worker in `dist/server`. The bundle can be deployed to an HTTPS static host or packaged for OpenAI Sites. WebGPU must be available in the visitor's browser.
 
 See [docs/web_mvp.md](docs/web_mvp.md) for architecture, scope, testing, and follow-up work.

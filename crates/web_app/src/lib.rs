@@ -69,7 +69,7 @@ mod browser {
         let commands = Rc::new(RefCell::new(Vec::<WebCommand>::new()));
         let show_stats = Rc::new(RefCell::new(true));
         install_controls(&document, &commands)?;
-        sync_canvas_size(&canvas, window, &mut app.borrow_mut());
+        sync_canvas_size(&canvas, &mut app.borrow_mut());
         set_ready();
 
         let app_for_loop = app.clone();
@@ -116,7 +116,7 @@ mod browser {
                                     show_runtime_error("The GPU ran out of memory. Try the Low quality setting, then reload the page.");
                                     target.exit();
                                 }
-                                Err(wgpu::SurfaceError::Timeout) => {}
+                                Err(wgpu::SurfaceError::Timeout | wgpu::SurfaceError::Other) => {}
                             }
                         }
                         _ => {}
@@ -124,7 +124,7 @@ mod browser {
                 }
                 Event::AboutToWait => {
                     if canvas_physical_size(&canvas_for_loop) != app_for_loop.borrow().renderer_size() {
-                        sync_canvas_size(&canvas_for_loop, window, &mut app_for_loop.borrow_mut());
+                        sync_canvas_size(&canvas_for_loop, &mut app_for_loop.borrow_mut());
                     }
 
                     for command in commands_for_loop.borrow_mut().drain(..) {
@@ -234,11 +234,11 @@ mod browser {
         }
     }
 
-    fn sync_canvas_size(canvas: &HtmlCanvasElement, window: &Window, app: &mut MurmurationApp<'_>) {
+    fn sync_canvas_size(canvas: &HtmlCanvasElement, app: &mut MurmurationApp<'_>) {
         let size = canvas_physical_size(canvas);
         canvas.set_width(size.width);
         canvas.set_height(size.height);
-        let _ = window.request_inner_size(size);
+        let _ = canvas.set_attribute("style", "width: 100%; height: 100%;");
         app.resize(size);
     }
 
