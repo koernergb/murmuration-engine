@@ -5,10 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+app_core = { path = "../app_core" }
 pollster.workspace = true
-renderer_wgpu = { path = "../renderer_wgpu" }
-serde.workspace = true
-serde_json.workspace = true
-sim_core = { path = "../sim_core" }
 wgpu.workspace = true
 winit.workspace = true

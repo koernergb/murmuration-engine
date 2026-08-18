@@ -1,5 +1,6 @@
 [workspace]
 members = [
+    "crates/app_core",
     "crates/sim_core",
     "crates/renderer_wgpu",
     "crates/native_app",
@@ -19,5 +20,5 @@ glam = "0.27"
 pollster = "0.3"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-wgpu = "0.19"
+wgpu = "26"
 winit = "0.29"

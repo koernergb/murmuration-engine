@@ -24,4 +24,3 @@ impl ForceSample {
 pub fn placeholder_force(_bird: &Bird) -> ForceSample {
     ForceSample::zero()
 }
-

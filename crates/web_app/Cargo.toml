@@ -8,6 +8,31 @@ license.workspace = true
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+app_core = { path = "../app_core" }
 renderer_wgpu = { path = "../renderer_wgpu" }
 sim_core = { path = "../sim_core" }
+wgpu.workspace = true
+winit.workspace = true
 
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+console_error_panic_hook = "0.1"
+console_log = "1.0"
+js-sys = "0.3"
+log = "0.4"
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+web-sys = { version = "0.3", features = [
+    "Document",
+    "DomRect",
+    "Element",
+    "Event",
+    "EventTarget",
+    "HtmlButtonElement",
+    "HtmlCanvasElement",
+    "HtmlElement",
+    "HtmlSelectElement",
+    "Node",
+    "Navigator",
+    "PointerEvent",
+    "Window",
+] }

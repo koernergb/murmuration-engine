@@ -1,4 +1,5 @@
 /target
+/dist
+/crates/web_app/dist
 Cargo.lock
 .DS_Store
-

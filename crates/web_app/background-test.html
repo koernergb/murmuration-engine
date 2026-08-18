@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Murmuration Background Mode Test</title>
+    <style>
+      * { box-sizing: border-box; }
+      html, body { min-height: 100%; margin: 0; }
+      body { background: #eee9e1; color: #211f1d; font-family: ui-sans-serif, system-ui, sans-serif; }
+      #background { position: fixed; inset: 0; z-index: 0; overflow: hidden; }
+      main { position: relative; z-index: 1; min-height: 100vh; padding: clamp(1.25rem, 5vw, 5rem); pointer-events: none; }
+      .content { width: min(42rem, 100%); padding: clamp(1.25rem, 3vw, 2.5rem); background: rgb(238 233 225 / 78%); backdrop-filter: blur(12px); }
+      h1 { margin: 0 0 1rem; font: 400 clamp(2.5rem, 8vw, 6rem)/0.92 Georgia, serif; letter-spacing: -0.055em; }
+      p { max-width: 34rem; line-height: 1.6; }
+      a, button, select { pointer-events: auto; }
+      a { color: #945f4a; font-weight: 700; }
+      .controls { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1rem; }
+      button, select { border: 1px solid #211f1d; padding: 0.75rem 1rem; background: #eee9e1; color: #211f1d; cursor: pointer; }
+      #status { margin-top: 1rem; font-size: 0.8rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+    </style>
+  </head>
+  <body>
+    <div id="background" aria-hidden="true"></div>
+    <main>
+      <section class="content">
+        <p>Background mode integration test</p>
+        <h1>Editorial systems for living ideas.</h1>
+        <p>This foreground content remains fully interactive while the Rust and WebGPU murmuration runs behind it.</p>
+        <a id="test-link" href="#contact">Test foreground link</a><br />
+        <div class="controls">
+          <button id="pointer-toggle" type="button">Disable pointer response</button>
+          <button id="pause-toggle" type="button">Pause</button>
+          <select id="quality" aria-label="Quality">
+            <option value="low">Low quality</option>
+            <option value="medium">Medium quality</option>
+            <option value="high">High quality</option>
+          </select>
+          <select id="preset" aria-label="Preset">
+            <option value="portfolio">Portfolio preset</option>
+            <option value="classic">Classic preset</option>
+            <option value="storm">Storm preset</option>
+            <option value="vortex">Vortex preset</option>
+          </select>
+          <button id="dispose" type="button">Dispose</button>
+          <button id="remount" type="button" disabled>Remount</button>
+        </div>
+        <div id="status" role="status">Starting…</div>
+      </section>
+    </main>
+    <script type="module">
+      import { mount } from "./murmuration-background.js";
+
+      const status = document.querySelector("#status");
+      let result;
+      let pointerEnabled = true;
+      let paused = false;
+
+      async function start() {
+        status.textContent = "Starting…";
+        result = await mount("#background", { quality: "low", preset: "portfolio" });
+        window.backgroundMountResult = result;
+        if (!result.ok) {
+          status.textContent = `Fallback active: ${result.code}`;
+          return;
+        }
+        status.textContent = "Background ready";
+        document.querySelector("#dispose").disabled = false;
+        document.querySelector("#remount").disabled = true;
+      }
+
+      document.querySelector("#pointer-toggle").addEventListener("click", () => {
+        pointerEnabled = !pointerEnabled;
+        result?.controller?.setPointerInteraction(pointerEnabled);
+        document.querySelector("#pointer-toggle").textContent = `${pointerEnabled ? "Disable" : "Enable"} pointer response`;
+      });
+      document.querySelector("#pause-toggle").addEventListener("click", () => {
+        paused = !paused;
+        result?.controller?.[paused ? "pause" : "resume"]();
+        document.querySelector("#pause-toggle").textContent = paused ? "Resume" : "Pause";
+      });
+      document.querySelector("#quality").addEventListener("change", (event) => result?.controller?.setQuality(event.target.value));
+      document.querySelector("#preset").addEventListener("change", (event) => result?.controller?.setPreset(event.target.value));
+      document.querySelector("#dispose").addEventListener("click", async () => {
+        await result?.controller?.dispose();
+        status.textContent = "Disposed";
+        document.querySelector("#dispose").disabled = true;
+        document.querySelector("#remount").disabled = false;
+      });
+      document.querySelector("#remount").addEventListener("click", start);
+
+      await start();
+    </script>
+  </body>
+</html>

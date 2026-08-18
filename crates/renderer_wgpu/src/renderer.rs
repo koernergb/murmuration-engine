@@ -1,11 +1,12 @@
 use std::error::Error;
 use std::mem;
+use std::sync::Arc;
 
 use bytemuck::{Pod, Zeroable};
 use wgpu::util::DeviceExt;
 use winit::{dpi::PhysicalSize, window::Window};
 
-use crate::camera::Camera;
+use crate::camera::{Camera, RenderPalette};
 use crate::gpu_buffers::{BirdBuffers, BirdInstanceRaw};
 use sim_core::{Bird, FlockParams};
 
@@ -34,32 +35,59 @@ pub struct Renderer<'window> {
     camera: Camera,
     camera_buffer: wgpu::Buffer,
     camera_bind_group: wgpu::BindGroup,
+    palette: RenderPalette,
     frame_index: u64,
 }
 
 impl<'window> Renderer<'window> {
-    pub async fn new(window: &'window Window, bird_capacity: usize) -> Result<Self, Box<dyn Error>> {
+    pub async fn new(
+        window: &'window Window,
+        bird_capacity: usize,
+    ) -> Result<Self, Box<dyn Error>> {
         let size = window.inner_size();
         let instance = wgpu::Instance::default();
         let surface = instance.create_surface(window)?;
+        Self::from_surface(instance, surface, size, bird_capacity).await
+    }
+
+    pub async fn new_owned(
+        window: Arc<Window>,
+        bird_capacity: usize,
+    ) -> Result<Renderer<'static>, Box<dyn Error>> {
+        let size = window.inner_size();
+        let instance = wgpu::Instance::default();
+        let surface = instance.create_surface(window)?;
+        Renderer::from_surface(instance, surface, size, bird_capacity).await
+    }
+
+    async fn from_surface(
+        instance: wgpu::Instance,
+        surface: wgpu::Surface<'window>,
+        size: PhysicalSize<u32>,
+        bird_capacity: usize,
+    ) -> Result<Self, Box<dyn Error>> {
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
                 power_preference: wgpu::PowerPreference::HighPerformance,
                 compatible_surface: Some(&surface),
                 force_fallback_adapter: false,
             })
-            .await
-            .ok_or("no suitable GPU adapters found")?;
+            .await?;
+
+        #[cfg(target_arch = "wasm32")]
+        let required_limits =
+            wgpu::Limits::downlevel_webgl2_defaults().using_resolution(adapter.limits());
+        #[cfg(not(target_arch = "wasm32"))]
+        let required_limits = wgpu::Limits::default();
 
         let (device, queue) = adapter
-            .request_device(
-                &wgpu::DeviceDescriptor {
-                    label: Some("murmuration-device"),
-                    required_features: wgpu::Features::empty(),
-                    required_limits: wgpu::Limits::default(),
-                },
-                None,
-            )
+            .request_device(&wgpu::DeviceDescriptor {
+                label: Some("murmuration-device"),
+                required_features: wgpu::Features::empty(),
+                required_limits,
+                memory_hints: wgpu::MemoryHints::Performance,
+                trace: wgpu::Trace::Off,
+            })
             .await?;
 
         let surface_caps = surface.get_capabilities(&adapter);
@@ -75,7 +103,12 @@ impl<'window> Renderer<'window> {
             .copied()
             .find(|mode| *mode == wgpu::PresentMode::Mailbox)
             .unwrap_or(wgpu::PresentMode::Fifo);
-        let alpha_mode = surface_caps.alpha_modes[0];
+        let alpha_mode = surface_caps
+            .alpha_modes
+            .iter()
+            .copied()
+            .find(|mode| *mode == wgpu::CompositeAlphaMode::PreMultiplied)
+            .unwrap_or(surface_caps.alpha_modes[0]);
 
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
@@ -91,11 +124,13 @@ impl<'window> Renderer<'window> {
         let depth = create_depth_resources(&device, &config);
 
         let camera = Camera::default();
+        let palette = RenderPalette::default();
         let bootstrap_params = FlockParams::default();
         let camera_uniform = camera.build_uniform(
             config.width as f32 / config.height as f32,
             0.0,
             &bootstrap_params,
+            &palette,
         );
         let camera_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("camera-buffer"),
@@ -154,17 +189,19 @@ impl<'window> Renderer<'window> {
             layout: Some(&sky_pipeline_layout),
             vertex: wgpu::VertexState {
                 module: &sky_shader,
-                entry_point: "vs_main",
+                entry_point: Some("vs_main"),
                 buffers: &[],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
             },
             fragment: Some(wgpu::FragmentState {
                 module: &sky_shader,
-                entry_point: "fs_main",
+                entry_point: Some("fs_main"),
                 targets: &[Some(wgpu::ColorTargetState {
                     format: config.format,
                     blend: None,
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
             }),
             primitive: wgpu::PrimitiveState {
                 topology: wgpu::PrimitiveTopology::TriangleList,
@@ -184,6 +221,7 @@ impl<'window> Renderer<'window> {
             }),
             multisample: wgpu::MultisampleState::default(),
             multiview: None,
+            cache: None,
         });
 
         let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -191,7 +229,7 @@ impl<'window> Renderer<'window> {
             layout: Some(&render_pipeline_layout),
             vertex: wgpu::VertexState {
                 module: &shader,
-                entry_point: "vs_main",
+                entry_point: Some("vs_main"),
                 buffers: &[
                     wgpu::VertexBufferLayout {
                         array_stride: mem::size_of::<BirdVertex>() as wgpu::BufferAddress,
@@ -224,15 +262,17 @@ impl<'window> Renderer<'window> {
                         ],
                     },
                 ],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
-                entry_point: "fs_main",
+                entry_point: Some("fs_main"),
                 targets: &[Some(wgpu::ColorTargetState {
                     format: config.format,
                     blend: Some(wgpu::BlendState::ALPHA_BLENDING),
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
+                compilation_options: wgpu::PipelineCompilationOptions::default(),
             }),
             primitive: wgpu::PrimitiveState {
                 topology: wgpu::PrimitiveTopology::TriangleList,
@@ -252,6 +292,7 @@ impl<'window> Renderer<'window> {
             }),
             multisample: wgpu::MultisampleState::default(),
             multiview: None,
+            cache: None,
         });
 
         let bird_vertices = [
@@ -309,6 +350,7 @@ impl<'window> Renderer<'window> {
             camera,
             camera_buffer,
             camera_bind_group,
+            palette,
             frame_index: 0,
         })
     }
@@ -334,6 +376,10 @@ impl<'window> Renderer<'window> {
         self.depth = create_depth_resources(&self.device, &self.config);
     }
 
+    pub fn set_palette(&mut self, palette: RenderPalette) {
+        self.palette = palette;
+    }
+
     pub fn draw(
         &mut self,
         birds: &[Bird],
@@ -344,12 +390,12 @@ impl<'window> Renderer<'window> {
             self.grow_instance_buffer(birds.len());
         }
 
-        let camera_uniform =
-            self.camera.build_uniform(
-                self.config.width as f32 / self.config.height as f32,
-                time_seconds,
-                _params,
-            );
+        let camera_uniform = self.camera.build_uniform(
+            self.config.width as f32 / self.config.height as f32,
+            time_seconds,
+            _params,
+            &self.palette,
+        );
         self.queue
             .write_buffer(&self.camera_buffer, 0, bytemuck::bytes_of(&camera_uniform));
 
@@ -376,8 +422,14 @@ impl<'window> Renderer<'window> {
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                     view: &view,
                     resolve_target: None,
+                    depth_slice: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: 0.0,
+                            g: 0.0,
+                            b: 0.0,
+                            a: self.palette.background_alpha as f64,
+                        }),
                         store: wgpu::StoreOp::Store,
                     },
                 })],

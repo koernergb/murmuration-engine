@@ -13,6 +13,8 @@ pub struct SimulationState {
     params: FlockParams,
     time_seconds: f32,
     cursor_repulsor: Option<[f32; 3]>,
+    guide_target: Option<[f32; 3]>,
+    guide_center: [f32; 3],
 }
 
 impl SimulationState {
@@ -22,6 +24,8 @@ impl SimulationState {
             params,
             time_seconds: 0.0,
             cursor_repulsor: None,
+            guide_target: None,
+            guide_center: [0.0; 3],
         }
     }
 
@@ -49,12 +53,20 @@ impl SimulationState {
         self.cursor_repulsor = cursor_repulsor;
     }
 
+    pub fn set_guide_target(&mut self, guide_target: Option<[f32; 3]>) {
+        self.guide_target = guide_target;
+    }
+
     pub fn step(&mut self, dt: f32) {
         let dt = dt.max(0.0);
         self.time_seconds += dt;
         let boundary_radius = self.params.boundary_radius.max(25.0);
         let noise_scale = self.params.noise_scale.max(0.001);
-        let anchors = cloud_anchors(self.time_seconds, boundary_radius);
+        let desired_guide = self.guide_target.unwrap_or([0.0; 3]);
+        let guide_alpha = 1.0 - (-dt / 0.42).exp();
+        self.guide_center = lerp3(self.guide_center, desired_guide, guide_alpha);
+        let anchors = cloud_anchors(self.time_seconds, boundary_radius)
+            .map(|anchor| add3(anchor, self.guide_center));
         let cloud_center = centroid(&anchors);
 
         for (index, bird) in self.birds.iter_mut().enumerate() {
@@ -114,10 +126,11 @@ impl SimulationState {
             bird.velocity = add3(bird.velocity, scale3(steering, dt));
             if let Some(cursor_repulsor) = self.cursor_repulsor {
                 let offset = sub3(bird.position, cursor_repulsor);
-                let cursor_radius = boundary_radius * 0.26;
+                let cursor_radius = boundary_radius * self.params.cursor_radius_ratio;
                 let distance = length3(offset);
                 if distance < cursor_radius && distance > 0.001 {
-                    let repel_strength = ((cursor_radius - distance) / cursor_radius).powi(2) * 22.0;
+                    let repel_strength = ((cursor_radius - distance) / cursor_radius).powi(2)
+                        * self.params.cursor_weight;
                     bird.velocity = add3(
                         bird.velocity,
                         scale3(normalize_or_zero(offset), repel_strength * dt),
@@ -187,7 +200,10 @@ fn soft_boundary_force(position: [f32; 3], radius: f32) -> [f32; 3] {
     }
 
     let pressure = ((extent - 0.72) / 0.28).clamp(0.0, 1.6);
-    scale3(normalize_or_zero(scale3(position, -1.0)), pressure * pressure * 3.2)
+    scale3(
+        normalize_or_zero(scale3(position, -1.0)),
+        pressure * pressure * 3.2,
+    )
 }
 
 fn fake_curl_noise(position: [f32; 3], phase: f32, scale: f32) -> [f32; 3] {

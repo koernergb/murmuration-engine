@@ -4,6 +4,47 @@ use sim_core::FlockParams;
 use winit::dpi::{PhysicalPosition, PhysicalSize};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
+pub struct RenderPalette {
+    pub fog: [f32; 4],
+    pub ivory: [f32; 4],
+    pub ink: [f32; 4],
+    pub brass: [f32; 4],
+    pub rust: [f32; 4],
+    pub background_alpha: f32,
+}
+
+impl RenderPalette {
+    pub const WARM_EDITORIAL: Self = Self {
+        fog: [0.659, 0.612, 0.576, 1.0],
+        ivory: [0.933, 0.914, 0.882, 1.0],
+        ink: [0.129, 0.122, 0.114, 1.0],
+        brass: [0.776, 0.604, 0.357, 1.0],
+        rust: [0.580, 0.373, 0.290, 1.0],
+        background_alpha: 1.0,
+    };
+
+    pub const STANDALONE: Self = Self {
+        fog: [0.88, 0.71, 0.55, 1.0],
+        ivory: [0.95, 0.84, 0.69, 1.0],
+        ink: [0.13, 0.17, 0.26, 1.0],
+        brass: [0.95, 0.74, 0.50, 1.0],
+        rust: [0.52, 0.30, 0.22, 1.0],
+        background_alpha: 1.0,
+    };
+
+    pub fn with_background_alpha(mut self, alpha: f32) -> Self {
+        self.background_alpha = alpha.clamp(0.0, 1.0);
+        self
+    }
+}
+
+impl Default for RenderPalette {
+    fn default() -> Self {
+        Self::STANDALONE
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Camera {
     pub target: Vec3,
     pub radius: f32,
@@ -43,6 +84,7 @@ impl Camera {
         aspect_ratio: f32,
         time_seconds: f32,
         params: &FlockParams,
+        palette: &RenderPalette,
     ) -> CameraUniform {
         let eye = self.eye(time_seconds);
         let view = Mat4::look_at_rh(eye, self.target, Vec3::Y);
@@ -56,11 +98,19 @@ impl Camera {
             view_proj: view_proj.to_cols_array_2d(),
             inverse_view_proj: inverse_view_proj.to_cols_array_2d(),
             eye: eye.extend(1.0).to_array(),
-            horizon_color: Vec4::new(0.88, 0.71, 0.55, 1.0).to_array(),
-            zenith_color: Vec4::new(0.13, 0.17, 0.26, 1.0).to_array(),
+            horizon_color: palette.fog,
+            zenith_color: palette.ink,
             sun_direction: sun_direction.extend(0.0).to_array(),
-            atmosphere: Vec4::new(params.fog_density, params.exposure, time_seconds, 0.0)
-                .to_array(),
+            atmosphere: Vec4::new(
+                params.fog_density,
+                params.exposure,
+                time_seconds,
+                palette.background_alpha,
+            )
+            .to_array(),
+            ivory_color: palette.ivory,
+            brass_color: palette.brass,
+            rust_color: palette.rust,
         }
     }
 
@@ -114,4 +164,7 @@ pub struct CameraUniform {
     pub zenith_color: [f32; 4],
     pub sun_direction: [f32; 4],
     pub atmosphere: [f32; 4],
+    pub ivory_color: [f32; 4],
+    pub brass_color: [f32; 4],
+    pub rust_color: [f32; 4],
 }
