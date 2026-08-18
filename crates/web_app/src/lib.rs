@@ -93,6 +93,7 @@ mod browser {
         SetPointerEnabled(bool),
         SetPalette(RenderPalette),
         Cursor(Option<PhysicalPosition<f64>>),
+        GuideTarget(Option<(PhysicalPosition<f64>, f32)>),
         Dispose,
     }
 
@@ -184,6 +185,17 @@ mod browser {
             self.runtime.enqueue(EngineCommand::SetPalette(palette));
         }
 
+        fn set_guide_target(&self, x: f64, y: f64, strength: f32) {
+            let position = PhysicalPosition::new(
+                x.clamp(0.0, 1.0) * self.runtime.canvas.width() as f64,
+                y.clamp(0.0, 1.0) * self.runtime.canvas.height() as f64,
+            );
+            self.runtime.enqueue(EngineCommand::GuideTarget(Some((
+                position,
+                strength.clamp(0.0, 1.0),
+            ))));
+        }
+
         fn dispose(&self) {
             self.runtime.dispose();
         }
@@ -229,6 +241,11 @@ mod browser {
         #[wasm_bindgen(js_name = setPalette)]
         pub fn set_palette(&self, palette: JsValue) {
             self.handle.set_palette(&palette);
+        }
+
+        #[wasm_bindgen(js_name = setGuideTarget)]
+        pub fn set_guide_target(&self, x: f64, y: f64, strength: f32) {
+            self.handle.set_guide_target(x, y, strength);
         }
 
         #[wasm_bindgen(js_name = dispose)]
@@ -458,6 +475,7 @@ mod browser {
             }
             EngineCommand::SetPalette(palette) => app.set_palette(palette),
             EngineCommand::Cursor(position) => app.set_cursor_position(position),
+            EngineCommand::GuideTarget(position) => app.set_guide_position(position),
             EngineCommand::Dispose => {}
         }
 

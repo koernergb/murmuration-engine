@@ -13,6 +13,8 @@ pub struct SimulationState {
     params: FlockParams,
     time_seconds: f32,
     cursor_repulsor: Option<[f32; 3]>,
+    guide_target: Option<[f32; 3]>,
+    guide_center: [f32; 3],
 }
 
 impl SimulationState {
@@ -22,6 +24,8 @@ impl SimulationState {
             params,
             time_seconds: 0.0,
             cursor_repulsor: None,
+            guide_target: None,
+            guide_center: [0.0; 3],
         }
     }
 
@@ -49,12 +53,20 @@ impl SimulationState {
         self.cursor_repulsor = cursor_repulsor;
     }
 
+    pub fn set_guide_target(&mut self, guide_target: Option<[f32; 3]>) {
+        self.guide_target = guide_target;
+    }
+
     pub fn step(&mut self, dt: f32) {
         let dt = dt.max(0.0);
         self.time_seconds += dt;
         let boundary_radius = self.params.boundary_radius.max(25.0);
         let noise_scale = self.params.noise_scale.max(0.001);
-        let anchors = cloud_anchors(self.time_seconds, boundary_radius);
+        let desired_guide = self.guide_target.unwrap_or([0.0; 3]);
+        let guide_alpha = 1.0 - (-dt / 0.42).exp();
+        self.guide_center = lerp3(self.guide_center, desired_guide, guide_alpha);
+        let anchors = cloud_anchors(self.time_seconds, boundary_radius)
+            .map(|anchor| add3(anchor, self.guide_center));
         let cloud_center = centroid(&anchors);
 
         for (index, bird) in self.birds.iter_mut().enumerate() {

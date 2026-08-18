@@ -135,6 +135,11 @@ export async function mount(target, options = {}) {
       setPalette(palette) {
         if (!disposed) wasmController.setPalette({ ...WARM_EDITORIAL_PALETTE, ...palette });
       },
+      setGuideTarget(target) {
+        if (!disposed) {
+          wasmController.setGuideTarget(target.x, target.y, target.strength ?? 0.35);
+        }
+      },
       async dispose() {
         if (disposed) return;
         disposed = true;

@@ -75,6 +75,7 @@ interface MurmurationController {
   setPreset(preset: "portfolio" | "classic" | "storm" | "vortex" | number): void;
   setPointerInteraction(enabled: boolean): void;
   setPalette(palette: Partial<Palette>): void;
+  setGuideTarget(target: { x: number; y: number; strength?: number }): void;
   dispose(): Promise<void>;
 }
 
@@ -87,6 +88,11 @@ interface Palette {
   backgroundAlpha: number;
 }
 ```
+
+`setGuideTarget` accepts normalized viewport coordinates from `0` to `1`. It shifts the
+flock's formation toward that screen-space point without replacing the cursor repulsor.
+`strength` is clamped from `0` to `1`; hosts should smooth changing targets before sending
+them when motion is driven by scrolling or other discrete input.
 
 Calling `resize()` without dimensions measures the target. An internal `ResizeObserver`
 also keeps the canvas synchronized. `dispose()` removes listeners and observers, exits the

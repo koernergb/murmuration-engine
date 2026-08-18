@@ -57,6 +57,7 @@ pub struct MurmurationApp<'window> {
     last_frame: Instant,
     stats: RuntimeStats,
     cursor_position: Option<PhysicalPosition<f64>>,
+    guide_position: Option<(PhysicalPosition<f64>, f32)>,
     camera: Camera,
     active_preset: usize,
     paused: bool,
@@ -82,6 +83,7 @@ impl<'window> MurmurationApp<'window> {
             last_frame: Instant::now(),
             stats,
             cursor_position: None,
+            guide_position: None,
             camera: Camera::default(),
             active_preset: 0,
             paused: false,
@@ -110,6 +112,22 @@ impl<'window> MurmurationApp<'window> {
                     .map(|world| world.to_array())
             });
             self.simulation.set_cursor_repulsor(cursor_world);
+            let guide_world = self.guide_position.and_then(|(position, strength)| {
+                self.camera
+                    .screen_to_focus_point(
+                        self.renderer.size(),
+                        position,
+                        self.simulation.time_seconds(),
+                    )
+                    .map(|world| {
+                        let mut target = world.to_array();
+                        target[0] *= strength;
+                        target[1] *= strength;
+                        target[2] *= strength;
+                        target
+                    })
+            });
+            self.simulation.set_guide_target(guide_world);
             self.simulation.step(dt);
         }
 
@@ -130,6 +148,10 @@ impl<'window> MurmurationApp<'window> {
 
     pub fn set_cursor_position(&mut self, cursor_position: Option<PhysicalPosition<f64>>) {
         self.cursor_position = cursor_position;
+    }
+
+    pub fn set_guide_position(&mut self, guide_position: Option<(PhysicalPosition<f64>, f32)>) {
+        self.guide_position = guide_position;
     }
 
     pub fn handle_command(&mut self, command: AppCommand) {
@@ -263,6 +285,7 @@ impl MurmurationApp<'static> {
             last_frame: Instant::now(),
             stats,
             cursor_position: None,
+            guide_position: None,
             camera: Camera::default(),
             active_preset: 0,
             paused: false,
