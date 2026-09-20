@@ -75,11 +75,8 @@
       .masthead {
         display: flex;
         align-items: flex-start;
-        justify-content: space-between;
-        gap: 1.5rem;
+        justify-content: flex-end;
       }
-
-      .identity { max-width: 35rem; }
 
       .eyebrow {
         margin: 0 0 0.55rem;
@@ -148,31 +145,55 @@
       .footer {
         display: flex;
         align-items: flex-end;
-        justify-content: space-between;
-        gap: 1.25rem;
+        justify-content: flex-end;
       }
-
-      .hint {
-        max-width: 21rem;
-        margin: 0;
-        color: var(--muted);
-        font-size: 0.74rem;
-        line-height: 1.5;
-      }
-
-      .hint strong { color: var(--ink); font-weight: 650; }
 
       .controls {
-        display: flex;
-        align-items: end;
-        gap: 0.45rem;
+        display: grid;
+        grid-template-columns: 0fr 2.4rem;
+        align-items: center;
+        gap: 0;
         padding: 0.52rem;
         border: 1px solid var(--line);
         border-radius: 0.75rem;
         background: var(--panel);
         box-shadow: 0 1.2rem 4rem rgba(0, 0, 0, 0.2);
         backdrop-filter: blur(22px);
+        opacity: 0.3;
+        overflow: hidden;
         pointer-events: auto;
+        transition: grid-template-columns 280ms ease, opacity 180ms ease;
+      }
+
+      .controls:hover,
+      .controls:focus-within {
+        grid-template-columns: 1fr 2.4rem;
+        opacity: 0.8;
+      }
+
+      .controls-panel {
+        display: flex;
+        align-items: end;
+        gap: 0.45rem;
+        min-width: 0;
+        overflow: hidden;
+        white-space: nowrap;
+      }
+
+      .settings-toggle {
+        width: 2.4rem;
+        padding: 0;
+        border-color: transparent;
+        background: transparent;
+        font-size: 1.25rem;
+        line-height: 1;
+      }
+
+      .settings-toggle:hover { background: rgba(255, 255, 255, 0.1); }
+
+      .controls:hover .settings-toggle,
+      .controls:focus-within .settings-toggle {
+        margin-left: 0.45rem;
       }
 
       .field {
@@ -255,21 +276,11 @@
 
       @media (max-width: 760px) {
         .chrome { padding: 1rem; }
-        .masthead { display: block; }
-        .subtitle { max-width: 22rem; }
         .stats { position: absolute; top: 1rem; right: 1rem; grid-template-columns: 1fr; }
         .stat { min-width: 4.6rem; padding: 0.55rem 0.65rem; }
         .stat:last-child { display: none; }
-        .footer { display: block; }
-        .hint { margin-bottom: 0.65rem; }
-        .controls {
-          width: 100%;
-          display: grid;
-          grid-template-columns: repeat(6, minmax(0, 1fr));
-          align-items: end;
-        }
-        .controls .field { grid-column: span 3; min-width: 0; }
-        .controls button { grid-column: span 2; min-width: 0; padding-inline: 0.5rem; }
+        .controls-panel { max-width: calc(100vw - 5.5rem); }
+        .controls-panel .field { min-width: 7rem; }
         select { width: 100%; min-width: 0; }
       }
 
@@ -285,12 +296,6 @@
 
       <div class="chrome">
         <header class="masthead">
-          <div class="identity">
-            <p class="eyebrow">Real-time WebGPU study</p>
-            <h1>Murmuration<br />Engine</h1>
-            <p class="subtitle">A living field of 25,000 agents, shaped by local motion and your presence.</p>
-          </div>
-
           <div class="stats" id="stats" aria-live="polite">
             <div class="stat"><span class="stat-label">FPS</span><span class="stat-value" id="fps-value">—</span></div>
             <div class="stat"><span class="stat-label">Birds</span><span class="stat-value" id="birds-value">25k</span></div>
@@ -301,28 +306,30 @@
         <div></div>
 
         <footer class="footer">
-          <p class="hint"><strong>Move through the flock.</strong> Your pointer becomes a pressure point. Use 1–4 for presets, Space to pause, and R to reset.</p>
           <div class="controls" aria-label="Simulation controls">
-            <div class="field">
-              <label for="preset-select">Field</label>
-              <select id="preset-select">
-                <option value="0">Calm Cloud</option>
-                <option value="1">Predator Ripple</option>
-                <option value="2">Ribbon Sheet</option>
-                <option value="3">Storm Column</option>
-              </select>
+            <div class="controls-panel">
+              <div class="field">
+                <label for="preset-select">Field</label>
+                <select id="preset-select">
+                  <option value="0">Calm Cloud</option>
+                  <option value="1">Predator Ripple</option>
+                  <option value="2">Ribbon Sheet</option>
+                  <option value="3">Storm Column</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="quality-select">Quality</label>
+                <select id="quality-select">
+                  <option value="low">Low · 10k</option>
+                  <option value="medium" selected>Medium · 25k</option>
+                  <option value="high">High · 50k</option>
+                </select>
+              </div>
+              <button id="pause-button" type="button">Pause</button>
+              <button id="reset-button" type="button">Reset</button>
+              <button id="stats-button" type="button" aria-label="Toggle performance statistics">Stats</button>
             </div>
-            <div class="field">
-              <label for="quality-select">Quality</label>
-              <select id="quality-select">
-                <option value="low">Low · 10k</option>
-                <option value="medium" selected>Medium · 25k</option>
-                <option value="high">High · 50k</option>
-              </select>
-            </div>
-            <button id="pause-button" type="button">Pause</button>
-            <button id="reset-button" type="button">Reset</button>
-            <button id="stats-button" type="button" aria-label="Toggle performance statistics">Stats</button>
+            <button class="settings-toggle" type="button" aria-label="Show simulation settings" title="Simulation settings">⚙</button>
           </div>
         </footer>
       </div>
